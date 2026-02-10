@@ -340,14 +340,7 @@ const AgentExplorer = () => {
                   <span className="text-cyber-purple">${((agent.total_volume || 0) / 1000000).toFixed(2)}M</span>
                 </div>
 
-                {/* Hover effect */}
-                <motion.div
-                  className="absolute inset-0 rounded-lg border border-cyber-blue/0 pointer-events-none"
-                  whileHover={{
-                    borderColor: 'rgba(0, 212, 255, 0.3)',
-                    boxShadow: '0 0 20px rgba(0, 212, 255, 0.1)'
-                  }}
-                />
+{/* hover handled by parent cyber-border class */}
               </motion.div>
             ))}
           </AnimatePresence>

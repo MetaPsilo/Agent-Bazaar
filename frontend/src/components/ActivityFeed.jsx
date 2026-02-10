@@ -139,20 +139,7 @@ const ActivityFeed = ({ activities = [] }) => {
                 </div>
               </div>
 
-              {/* Activity pulse indicator */}
-              <motion.div
-                className="absolute inset-0 rounded-lg border border-current/20 pointer-events-none"
-                initial={{ opacity: 0 }}
-                animate={{ 
-                  opacity: [0, 0.5, 0],
-                  scale: [1, 1.02, 1]
-                }}
-                transition={{ 
-                  duration: 2,
-                  ease: "easeInOut"
-                }}
-                style={{ color: colorClass.replace('text-', '').replace('cyber-', '#') }}
-              />
+              {/* Activity pulse indicator — removed, parent not positioned */}
             </motion.div>
           );
         })}

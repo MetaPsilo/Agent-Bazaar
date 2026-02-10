@@ -62,9 +62,8 @@ const NetworkVisualization = () => {
     const animate = () => {
       time += 0.016;
       
-      // Clear canvas
-      ctx.fillStyle = 'rgba(10, 10, 10, 0.05)';
-      ctx.fillRect(0, 0, canvas.offsetWidth, canvas.offsetHeight);
+      // Clear canvas fully each frame for crisp rendering
+      ctx.clearRect(0, 0, canvas.offsetWidth, canvas.offsetHeight);
 
       // Update nodes
       nodes.forEach(node => {
