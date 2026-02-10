@@ -1,0 +1,7 @@
+.env
+node_modules/
+target/
+test-ledger/
+.anchor/
+api/bazaar.db
+api/node_modules/
