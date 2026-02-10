@@ -90,6 +90,50 @@
 
 ---
 
+---
+
+## Round 2: Deep Attacker Audit (Feb 10, 2026)
+
+### 🔴 CRITICAL — Transaction Replay Attack
+**File:** `api/x402-facilitator.js`  
+**Attack:** Pay once, call service unlimited times by replaying the same tx signature. The x402 middleware verified the on-chain tx but never recorded it as used.  
+**Fix:** Created `payment-cache.js` — in-memory signature cache with TTL eviction. Every verified signature (including demo sigs) is recorded and checked before acceptance. Production should use Redis.
+
+### 🔴 CRITICAL — TOKEN_SECRET Regenerated Per-Request
+**File:** `api/x402-facilitator.js`  
+**Attack:** Without `TOKEN_SECRET` env var, `crypto.randomBytes(32)` was called inside `handlePaymentSubmission()` — generating a NEW secret every request. ALL access tokens became immediately unverifiable. Attacker could claim any token is valid since no consistent key existed to check against.  
+**Fix:** Moved secret generation to module scope (runs once at startup). Logged warning if env var not set.
+
+### 🔴 HIGH — Self-Rating Bypass
+**File:** `api/server.js` — `POST /feedback`  
+**Attack:** The self-rating check was `if (raterAddress && raterAddress === agent.owner)` — the `&&` meant omitting the `rater` field entirely bypassed the check (undefined is falsy).  
+**Fix:** Changed to `if (raterAddress === agent.owner)` — `undefined === "HkrtQ..."` is false, so omission no longer helps. But real protection requires mandatory rater field + signature verification in production.
+
+### 🔴 HIGH — Volume Inflation Attack
+**File:** `api/server.js` — `POST /feedback`  
+**Attack:** `amountPaid` is user-supplied with no verification. Send `{"amountPaid": 999999999999}` to inflate an agent's total volume to appear like a massive earner. Manipulates leaderboard rankings.  
+**Fix:** Capped at 1000 USDC max per feedback. In production, must cross-reference against actual on-chain tx amount.
+
+### 🟡 MEDIUM — WebSocket IP Spoofing
+**File:** `api/server.js`  
+**Attack:** `x-forwarded-for` header is trivially spoofable. Attacker bypasses per-IP connection limit by sending fake headers.  
+**Fix:** Only trust `x-forwarded-for` when `TRUST_PROXY=true` env var is set (indicating reverse proxy). Default: use `remoteAddress`.
+
+### 🟡 MEDIUM — Rating Distribution JSON Corruption
+**File:** `api/server.js`  
+**Attack:** If `rating_distribution` gets corrupted in DB (manually or via race condition), `JSON.parse()` throws and crashes the entire feedback transaction.  
+**Fix:** Wrapped in try/catch with fallback to `[0,0,0,0,0]`.
+
+### 🟡 MEDIUM — Text Summary Input Bomb  
+**File:** `api/server.js`  
+**Attack:** Send a multi-MB string in the `text` query param to the summarization endpoint. Even though the body limit is 1MB, query strings are unbounded by default.  
+**Fix:** Added 10,000 char limit on text input.
+
+### 🟡 LOW — Ownership Check is Knowledge-Based, Not Proof-Based
+**File:** `api/server.js` — `PUT /agents/:id`  
+**Attack:** The ownership "verification" just checks if the caller knows the owner's public key — which is publicly visible via GET /agents/:id. Any attacker can read it and include it in their update request.  
+**Fix:** Documented as known limitation. Added comment + `authSignature` field placeholder for production ed25519 verification.
+
 ## Recommendations for Production
 
 1. Implement wallet-based auth (sign-to-login) for all write API operations

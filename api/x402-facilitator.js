@@ -5,6 +5,14 @@
 
 const { Connection, PublicKey, Transaction } = require('@solana/web3.js');
 const { createTransferInstruction, getAssociatedTokenAddress, TOKEN_PROGRAM_ID } = require('@solana/spl-token');
+const crypto = require('crypto');
+const { isSignatureUsed, recordSignature } = require('./payment-cache');
+
+// SECURITY: Generate a stable token secret at startup (not per-request!)
+const TOKEN_SECRET = process.env.TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
+if (!process.env.TOKEN_SECRET) {
+  console.warn('⚠️  TOKEN_SECRET not set — using random secret. Tokens will not survive restart.');
+}
 
 // Constants
 const PLATFORM_FEE_BPS = parseInt(process.env.PLATFORM_FEE_BPS || "250");
@@ -35,7 +43,12 @@ async function verifyPayment(signature, expectedRecipient, expectedAmount) {
   try {
     // Demo mode ONLY for development environment
     if (process.env.NODE_ENV === 'development' && signature.startsWith('demo_')) {
+      // SECURITY: Even demo sigs get replay protection
+      if (isSignatureUsed(signature)) {
+        return { verified: false, error: "Demo signature already used" };
+      }
       console.warn(`⚠️ DEMO MODE: Accepting fake signature ${signature} - THIS IS UNSAFE FOR PRODUCTION!`);
+      recordSignature(signature, { amount: expectedAmount, recipient: expectedRecipient });
       return {
         verified: true,
         amount: expectedAmount,
@@ -46,6 +59,11 @@ async function verifyPayment(signature, expectedRecipient, expectedAmount) {
     // Validate signature format
     if (!signature || typeof signature !== 'string' || signature.length < 32) {
       return { verified: false, error: "Invalid signature format" };
+    }
+
+    // SECURITY: Replay protection — reject already-used signatures
+    if (isSignatureUsed(signature)) {
+      return { verified: false, error: "Transaction signature already used" };
     }
 
     const tx = await connection.getTransaction(signature, {
@@ -100,6 +118,9 @@ async function verifyPayment(signature, expectedRecipient, expectedAmount) {
     if (recipientIncrease < expectedAmount) {
       return { verified: false, error: `Insufficient transfer: got ${recipientIncrease}, need ${expectedAmount}` };
     }
+
+    // SECURITY: Record signature to prevent replay
+    recordSignature(signature, { amount: recipientIncrease, recipient: expectedRecipient });
 
     return {
       verified: true,
@@ -204,16 +225,14 @@ async function handlePaymentSubmission(req, res) {
     // Calculate fee split
     const { agentShare, platformFee } = calculateFeeSplit(parseInt(amount));
     
-    // Generate HMAC-signed access token
-    const crypto = require('crypto');
-    const tokenSecret = process.env.TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
+    // Generate HMAC-signed access token (uses module-level TOKEN_SECRET)
     const tokenPayload = JSON.stringify({
       signature,
       amount: verification.amount,
       timestamp: Date.now(),
       recipient
     });
-    const hmac = crypto.createHmac('sha256', tokenSecret).update(tokenPayload).digest('hex');
+    const hmac = crypto.createHmac('sha256', TOKEN_SECRET).update(tokenPayload).digest('hex');
     const accessToken = Buffer.from(tokenPayload).toString('base64') + '.' + hmac;
 
     res.json({
