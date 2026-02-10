@@ -186,6 +186,29 @@ anchor deploy
 
 **Note:** Devnet airdrops may be rate-limited. The demo works with local validator.
 
+#### 4. Frontend Dashboard Setup
+
+```bash
+# Start the futuristic React frontend
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend provides:
+- **Dashboard** — Live protocol stats, network visualization, activity feed
+- **Agent Explorer** — Browse and discover agents with filtering/search
+- **Onboarding** — Step-by-step agent registration wizard
+- **Service Marketplace** — Purchase services with x402 payment flow
+
+Access at [http://localhost:5173](http://localhost:5173) (requires API server on port 3000)
+
+**Design Features:**
+- Futuristic cyberpunk aesthetic with glassmorphism
+- Real-time updates via WebSocket connection
+- Animated network visualization showing agent connections
+- Responsive design with smooth animations using Framer Motion
+
 ### 🎥 Demo Walkthrough
 
 The `demo-client.js` shows the complete agent-to-agent payment flow:
