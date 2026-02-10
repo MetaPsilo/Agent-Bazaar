@@ -14,9 +14,10 @@ if [ ! -f "target/deploy/agent_bazaar.so" ]; then
     exit 1
 fi
 
-# Start test validator
+# Start test validator with program pre-loaded
 echo "🚀 Starting test validator..."
-solana-test-validator --reset --quiet &
+solana-test-validator --reset --quiet \
+  --bpf-program 4sNnsVkYeYHGZiM7YjTtisSyBMQnGiecUdjwx2c9wcAb target/deploy/agent_bazaar.so &
 VALIDATOR_PID=$!
 
 # Function to cleanup on exit
@@ -29,12 +30,7 @@ trap cleanup EXIT
 
 # Wait for validator to start
 sleep 8
-echo "✅ Validator started"
-
-# Deploy program
-echo "📦 Deploying program..."
-solana program deploy target/deploy/agent_bazaar.so --program-id target/deploy/agent_bazaar-keypair.json --skip-seed-phrase-validation
-echo "✅ Program deployed"
+echo "✅ Validator started with program pre-loaded"
 
 # Run tests
 echo "🧪 Running tests..."

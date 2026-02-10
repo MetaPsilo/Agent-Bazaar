@@ -2,7 +2,7 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { AgentBazaar } from "../target/types/agent_bazaar";
 import { expect } from "chai";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
+import { PublicKey, SystemProgram, Keypair } from "@solana/web3.js";
 
 describe("agent_bazaar", () => {
   const provider = anchor.AnchorProvider.env();
@@ -10,6 +10,7 @@ describe("agent_bazaar", () => {
 
   const program = anchor.workspace.agentBazaar as Program<AgentBazaar>;
   const authority = provider.wallet;
+  const rater = Keypair.generate(); // separate keypair for feedback (can't self-rate)
 
   let protocolStatePda: PublicKey;
 
@@ -18,6 +19,13 @@ describe("agent_bazaar", () => {
       [Buffer.from("protocol")],
       program.programId
     );
+
+    // Fund rater
+    const sig = await provider.connection.requestAirdrop(
+      rater.publicKey,
+      2 * anchor.web3.LAMPORTS_PER_SOL
+    );
+    await provider.connection.confirmTransaction(sig);
   });
 
   it("Initializes the protocol", async () => {
@@ -91,7 +99,7 @@ describe("agent_bazaar", () => {
       [
         Buffer.from("feedback"),
         agentId.toArrayLike(Buffer, "le", 8),
-        authority.publicKey.toBuffer(),
+        rater.publicKey.toBuffer(),
         timestamp.toArrayLike(Buffer, "le", 8),
       ],
       program.programId
@@ -112,9 +120,10 @@ describe("agent_bazaar", () => {
         agentIdentity: agentPda,
         agentReputation: repPda,
         feedback: feedbackPda,
-        rater: authority.publicKey,
+        rater: rater.publicKey,
         systemProgram: SystemProgram.programId,
       })
+      .signers([rater])
       .rpc();
 
     const rep = await program.account.agentReputation.fetch(repPda);
