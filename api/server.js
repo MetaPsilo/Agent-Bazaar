@@ -84,20 +84,73 @@ db.exec(`
   INSERT OR IGNORE INTO protocol_stats (id) VALUES (1);
 `);
 
-// WebSocket setup
+// WebSocket setup with security
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: "/ws" });
-const wsClients = new Set();
+const wss = new WebSocketServer({ 
+  server, 
+  path: "/ws",
+  maxPayload: 16 * 1024, // 16KB max message size
+  perMessageDeflate: false, // Disable compression to prevent attacks
+});
 
-wss.on("connection", (ws) => {
-  wsClients.add(ws);
+const wsClients = new Map(); // Use Map to track connection metadata
+const MAX_CONNECTIONS = 1000; // Prevent resource exhaustion
+
+wss.on("connection", (ws, req) => {
+  // Rate limit connections per IP
+  const clientIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+  const connectionsFromIP = Array.from(wsClients.values()).filter(meta => meta.ip === clientIP).length;
+  
+  if (connectionsFromIP > 10) { // Max 10 connections per IP
+    ws.close(1008, "Too many connections from this IP");
+    return;
+  }
+
+  if (wsClients.size >= MAX_CONNECTIONS) {
+    ws.close(1013, "Server overloaded");
+    return;
+  }
+
+  wsClients.set(ws, { ip: clientIP, connectedAt: Date.now() });
+  
   ws.on("close", () => wsClients.delete(ws));
+  
+  ws.on("message", (data) => {
+    // Ignore client messages to prevent abuse
+    // This is a broadcast-only WebSocket
+    console.log("Ignoring client message on broadcast-only WebSocket");
+  });
+
+  ws.on("error", (error) => {
+    console.error("WebSocket error:", error);
+    wsClients.delete(ws);
+  });
 });
 
 function broadcast(event) {
-  const data = JSON.stringify(event);
-  for (const client of wsClients) {
-    if (client.readyState === 1) client.send(data);
+  if (wsClients.size === 0) return;
+  
+  try {
+    const data = JSON.stringify(event);
+    const deadClients = [];
+    
+    for (const [client, metadata] of wsClients) {
+      if (client.readyState === 1) { // WebSocket.OPEN
+        try {
+          client.send(data);
+        } catch (error) {
+          console.error("Broadcast send error:", error);
+          deadClients.push(client);
+        }
+      } else {
+        deadClients.push(client);
+      }
+    }
+    
+    // Clean up dead connections
+    deadClients.forEach(client => wsClients.delete(client));
+  } catch (error) {
+    console.error("Broadcast error:", error);
   }
 }
 
@@ -220,39 +273,75 @@ app.get("/agents/:id", [
 });
 
 // GET /agents/:id/feedback
-app.get("/agents/:id/feedback", (req, res) => {
-  const { limit = 20, offset = 0 } = req.query;
-  const feedbacks = db.prepare(
-    "SELECT * FROM feedback WHERE agent_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?"
-  ).all(req.params.id, Number(limit), Number(offset));
-  res.json(feedbacks);
+app.get("/agents/:id/feedback", [
+  validateAgentId,
+  validatePaginationQuery,
+  handleValidationErrors
+], (req, res) => {
+  try {
+    const { limit = 20, offset = 0 } = req.query;
+    
+    const feedbackStmt = safePreparedStatement(db,
+      "SELECT * FROM feedback WHERE agent_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+      [req.params.id, limit, offset]
+    );
+    const feedbacks = feedbackStmt.all(req.params.id, Number(limit), Number(offset));
+    
+    res.json(feedbacks);
+  } catch (error) {
+    console.error("Feedback fetch error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // GET /stats
 app.get("/stats", (req, res) => {
-  const stats = db.prepare("SELECT * FROM protocol_stats WHERE id = 1").get();
-  const activeAgents = db.prepare("SELECT COUNT(*) as c FROM agents WHERE active = 1").get().c;
-  res.json({ ...stats, activeAgents });
+  try {
+    const statsStmt = safePreparedStatement(db, "SELECT * FROM protocol_stats WHERE id = 1", []);
+    const stats = statsStmt.get();
+    
+    const activeAgentsStmt = safePreparedStatement(db, "SELECT COUNT(*) as c FROM agents WHERE active = 1", []);
+    const activeAgents = activeAgentsStmt.get().c;
+    
+    res.json({ ...stats, activeAgents });
+  } catch (error) {
+    console.error("Stats fetch error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // GET /leaderboard
-app.get("/leaderboard", (req, res) => {
-  const { metric = "rating", limit = 20 } = req.query;
-  const sortMap = {
-    rating: "avg_rating DESC",
-    transactions: "r.total_ratings DESC",
-    volume: "r.total_volume DESC",
-  };
-  const agents = db.prepare(`
-    SELECT a.*, r.total_ratings, r.rating_sum, r.total_volume, r.rating_distribution,
-           CASE WHEN r.total_ratings > 0 THEN CAST(r.rating_sum AS REAL) / r.total_ratings ELSE 0 END as avg_rating
-    FROM agents a
-    LEFT JOIN reputation r ON a.agent_id = r.agent_id
-    WHERE a.active = 1
-    ORDER BY ${sortMap[metric] || "avg_rating DESC"}
-    LIMIT ?
-  `).all(Number(limit));
-  res.json(agents);
+app.get("/leaderboard", [
+  query('metric').optional().isIn(['rating', 'transactions', 'volume']).withMessage('Invalid metric'),
+  query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100').toInt(),
+  handleValidationErrors
+], (req, res) => {
+  try {
+    const { metric = "rating", limit = 20 } = req.query;
+    const sortMap = {
+      rating: "avg_rating DESC",
+      transactions: "r.total_ratings DESC",
+      volume: "r.total_volume DESC",
+    };
+    
+    const queryStr = `
+      SELECT a.*, r.total_ratings, r.rating_sum, r.total_volume, r.rating_distribution,
+             CASE WHEN r.total_ratings > 0 THEN CAST(r.rating_sum AS REAL) / r.total_ratings ELSE 0 END as avg_rating
+      FROM agents a
+      LEFT JOIN reputation r ON a.agent_id = r.agent_id
+      WHERE a.active = 1
+      ORDER BY ${sortMap[metric]}
+      LIMIT ?
+    `;
+    
+    const agentsStmt = safePreparedStatement(db, queryStr, [limit]);
+    const agents = agentsStmt.all(Number(limit));
+    
+    res.json(agents);
+  } catch (error) {
+    console.error("Leaderboard fetch error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // POST /feedback - submit feedback (simplified, stores in DB)

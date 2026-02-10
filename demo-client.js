@@ -49,11 +49,15 @@ async function makePayment(recipientPubkey, amountUSDCLamports, memo) {
     // Create transaction
     const transaction = new Transaction().add(transferInstruction);
     
-    // For demo purposes, we'll simulate a successful transaction
-    // In reality, this would fail without proper USDC tokens
-    console.log(`⚠️  Demo mode: Simulating payment transaction (would require actual USDC tokens)`);
+    // Demo mode warning
+    if (process.env.NODE_ENV !== 'development') {
+      throw new Error("Demo mode only available in development environment");
+    }
     
-    // Generate a fake signature for demo
+    console.log(`⚠️  DEMO MODE: Simulating payment transaction - NOT FOR PRODUCTION USE!`);
+    console.log(`    Real implementation would require: USDC tokens, wallet connection, transaction signing`);
+    
+    // Generate a fake signature for demo (only in development)
     const fakeSignature = "demo_" + Math.random().toString(36).substring(7);
     
     return {

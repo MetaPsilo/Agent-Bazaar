@@ -6,6 +6,7 @@ require("dotenv").config();
 const { Connection, PublicKey } = require("@solana/web3.js");
 const Database = require("better-sqlite3");
 const path = require("path");
+const { safePreparedStatement } = require("./security-middleware");
 
 const RPC_URL = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
 const PROGRAM_ID = process.env.PROGRAM_ID;
@@ -19,22 +20,35 @@ const connection = new Connection(RPC_URL, "confirmed");
 const programId = new PublicKey(PROGRAM_ID);
 const db = new Database(path.join(__dirname, "bazaar.db"));
 
-// Borsh deserialization helpers (simplified)
-function readString(buf, offset) {
-  const len = buf.readUInt32LE(offset);
-  const str = buf.slice(offset + 4, offset + 4 + len).toString("utf8");
-  return [str, offset + 4 + len];
+// Borsh deserialization helpers (with validation)
+function readString(buf, offset, maxLength = 1000) {
+  try {
+    if (offset + 4 > buf.length) throw new Error("Buffer underrun reading string length");
+    
+    const len = buf.readUInt32LE(offset);
+    if (len > maxLength) throw new Error(`String too long: ${len} > ${maxLength}`);
+    if (offset + 4 + len > buf.length) throw new Error("Buffer underrun reading string data");
+    
+    const str = buf.slice(offset + 4, offset + 4 + len).toString("utf8");
+    return [str, offset + 4 + len];
+  } catch (error) {
+    console.error("String deserialization error:", error);
+    throw error;
+  }
 }
 
 function readU64(buf, offset) {
+  if (offset + 8 > buf.length) throw new Error("Buffer underrun reading U64");
   return [Number(buf.readBigUInt64LE(offset)), offset + 8];
 }
 
 function readI64(buf, offset) {
+  if (offset + 8 > buf.length) throw new Error("Buffer underrun reading I64");
   return [Number(buf.readBigInt64LE(offset)), offset + 8];
 }
 
 function readPubkey(buf, offset) {
+  if (offset + 32 > buf.length) throw new Error("Buffer underrun reading Pubkey");
   const key = new PublicKey(buf.slice(offset, offset + 32));
   return [key.toBase58(), offset + 32];
 }
