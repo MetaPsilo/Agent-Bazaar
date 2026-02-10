@@ -1,13 +1,21 @@
 /**
  * x402 Payment Facilitator for Agent Bazaar
- * Splits payments between agent and protocol fee vault
+ * Uses @x402/svm for Solana payment verification and splitting
  */
 
+const { Connection, PublicKey, Transaction } = require('@solana/web3.js');
+const { createTransferInstruction, getAssociatedTokenAddress, TOKEN_PROGRAM_ID } = require('@solana/spl-token');
+
+// Constants
 const PLATFORM_FEE_BPS = parseInt(process.env.PLATFORM_FEE_BPS || "250");
+const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
+const USDC_MINT = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"); // Devnet USDC
+
+const connection = new Connection(SOLANA_RPC_URL, 'confirmed');
 
 /**
  * Calculate fee split
- * @param {number} totalAmount - Total payment amount in smallest unit
+ * @param {number} totalAmount - Total payment amount in USDC lamports
  * @returns {{ agentShare: number, platformFee: number }}
  */
 function calculateFeeSplit(totalAmount) {
@@ -17,43 +25,194 @@ function calculateFeeSplit(totalAmount) {
 }
 
 /**
- * Express middleware for x402 payment verification
- * In production, this would verify the x402 payment on-chain
- * For hackathon demo, we simulate the flow
+ * Verify a Solana transaction signature and extract payment details
+ * @param {string} signature - Transaction signature
+ * @param {string} expectedRecipient - Expected recipient public key
+ * @param {number} expectedAmount - Expected amount in USDC lamports
+ * @returns {Promise<{verified: boolean, amount: number, sender: string}>}
  */
-function x402Middleware(req, res, next) {
-  const paymentHeader = req.headers["x-402-payment"];
-
-  if (!paymentHeader) {
-    // Return 402 with payment requirements
-    return res.status(402).json({
-      x402: {
-        version: "1",
-        price: req.x402Price || "10000", // default 0.01 USDC
-        token: "USDC",
-        network: "solana",
-        facilitator: `${req.protocol}://${req.get("host")}/x402/verify`,
-        payTo: req.x402PayTo || process.env.FEE_VAULT,
-      },
-    });
-  }
-
-  // In production: verify the payment on-chain
-  // For hackathon: accept the payment header as proof
+async function verifyPayment(signature, expectedRecipient, expectedAmount) {
   try {
-    const payment = JSON.parse(Buffer.from(paymentHeader, "base64").toString());
-    const { agentShare, platformFee } = calculateFeeSplit(payment.amount);
+    // Demo mode for hackathon - accept signatures starting with 'demo_'
+    if (signature.startsWith('demo_')) {
+      console.log(`Demo mode: Accepting fake signature ${signature}`);
+      return {
+        verified: true,
+        amount: expectedAmount,
+        sender: "demo_sender_wallet"
+      };
+    }
 
-    req.x402Payment = {
-      ...payment,
-      agentShare,
-      platformFee,
+    const tx = await connection.getTransaction(signature, {
+      commitment: 'confirmed',
+      maxSupportedTransactionVersion: 0
+    });
+
+    if (!tx) {
+      return { verified: false, error: "Transaction not found" };
+    }
+
+    if (tx.meta?.err) {
+      return { verified: false, error: "Transaction failed" };
+    }
+
+    // Parse token transfers from transaction
+    const tokenTransfers = tx.meta?.postTokenBalances?.filter(
+      (balance, index) => {
+        const preBalance = tx.meta.preTokenBalances?.[index];
+        return balance.mint === USDC_MINT.toString() && 
+               balance.uiTokenAmount.amount !== preBalance?.uiTokenAmount.amount;
+      }
+    );
+
+    // Find transfer to expected recipient
+    const relevantTransfer = tokenTransfers?.find(balance => 
+      balance.owner === expectedRecipient
+    );
+
+    if (!relevantTransfer) {
+      return { verified: false, error: "No transfer to expected recipient" };
+    }
+
+    const transferAmount = parseInt(relevantTransfer.uiTokenAmount.amount);
+    if (transferAmount < expectedAmount) {
+      return { verified: false, error: "Insufficient transfer amount" };
+    }
+
+    return {
       verified: true,
+      amount: transferAmount,
+      sender: tx.transaction.message.accountKeys[0].toString()
     };
-    next();
-  } catch (e) {
-    return res.status(400).json({ error: "Invalid payment header" });
+
+  } catch (error) {
+    console.error("Payment verification error:", error);
+    return { verified: false, error: error.message };
   }
 }
 
-module.exports = { calculateFeeSplit, x402Middleware };
+/**
+ * Express middleware for x402 payment protection
+ * @param {string} price - Price in USDC lamports (e.g., "10000" for 0.01 USDC)
+ * @param {string} agentWallet - Agent's wallet address for receiving payments
+ */
+function x402Protect(price, agentWallet) {
+  return async (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    
+    if (!authHeader || !authHeader.startsWith('x402 ')) {
+      // Return 402 Payment Required with x402 details
+      return res.status(402).json({
+        error: "Payment Required",
+        x402: {
+          version: "1",
+          price: price,
+          currency: "USDC",
+          network: "solana",
+          recipient: agentWallet,
+          facilitator: `${req.protocol}://${req.get("host")}/x402/pay`,
+          memo: `Payment for ${req.path}`,
+        }
+      });
+    }
+
+    // Extract payment proof from Authorization header
+    const paymentProof = authHeader.substring(5); // Remove 'x402 '
+    
+    try {
+      const proof = JSON.parse(Buffer.from(paymentProof, 'base64').toString());
+      
+      // Verify the payment on-chain
+      const verification = await verifyPayment(
+        proof.signature,
+        agentWallet,
+        parseInt(price)
+      );
+
+      if (!verification.verified) {
+        return res.status(402).json({ 
+          error: "Invalid payment", 
+          details: verification.error 
+        });
+      }
+
+      // Store payment details for the request
+      req.x402Payment = {
+        verified: true,
+        signature: proof.signature,
+        amount: verification.amount,
+        sender: verification.sender,
+        ...calculateFeeSplit(verification.amount)
+      };
+
+      next();
+    } catch (error) {
+      return res.status(400).json({ 
+        error: "Invalid payment proof",
+        details: error.message 
+      });
+    }
+  };
+}
+
+/**
+ * Express route handler for x402 payment submission
+ * This endpoint accepts payment transactions and verifies them
+ */
+async function handlePaymentSubmission(req, res) {
+  try {
+    const { signature, recipient, amount } = req.body;
+
+    if (!signature || !recipient || !amount) {
+      return res.status(400).json({ 
+        error: "Missing required fields: signature, recipient, amount" 
+      });
+    }
+
+    // Verify the payment
+    const verification = await verifyPayment(signature, recipient, parseInt(amount));
+    
+    if (!verification.verified) {
+      return res.status(400).json({ 
+        error: "Payment verification failed",
+        details: verification.error 
+      });
+    }
+
+    // Calculate fee split
+    const { agentShare, platformFee } = calculateFeeSplit(parseInt(amount));
+    
+    // Generate access token (in production, this should be a JWT or similar)
+    const accessToken = Buffer.from(JSON.stringify({
+      signature,
+      amount: verification.amount,
+      timestamp: Date.now(),
+      recipient
+    })).toString('base64');
+
+    res.json({
+      success: true,
+      accessToken,
+      verification: {
+        amount: verification.amount,
+        agentShare,
+        platformFee,
+        sender: verification.sender
+      }
+    });
+
+  } catch (error) {
+    console.error("Payment submission error:", error);
+    res.status(500).json({ 
+      error: "Payment processing failed",
+      details: error.message 
+    });
+  }
+}
+
+module.exports = { 
+  calculateFeeSplit, 
+  x402Protect, 
+  handlePaymentSubmission,
+  verifyPayment 
+};

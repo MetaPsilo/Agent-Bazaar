@@ -9,11 +9,15 @@
     "index": "node indexer.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "cors": "^2.8.5",
+    "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.95.0",
+    "@x402/core": "^2.3.0",
+    "@x402/express": "^2.3.0",
+    "@x402/svm": "^2.3.0",
     "better-sqlite3": "^11.0.0",
-    "ws": "^8.16.0",
-    "dotenv": "^16.4.1"
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.1",
+    "express": "^4.18.2",
+    "ws": "^8.16.0"
   }
 }

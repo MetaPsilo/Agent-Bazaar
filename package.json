@@ -7,7 +7,10 @@
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
   },
   "dependencies": {
-    "@coral-xyz/anchor": "^0.31.1"
+    "@coral-xyz/anchor": "^0.31.1",
+    "@solana/spl-token": "^0.4.14",
+    "axios": "^1.13.5",
+    "dotenv": "^17.2.4"
   },
   "devDependencies": {
     "@types/bn.js": "^5.1.0",

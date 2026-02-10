@@ -5,6 +5,7 @@ const http = require("http");
 const { WebSocketServer } = require("ws");
 const Database = require("better-sqlite3");
 const path = require("path");
+const { x402Protect, handlePaymentSubmission, calculateFeeSplit } = require("./x402-facilitator");
 
 const app = express();
 app.use(cors());
@@ -77,6 +78,47 @@ function broadcast(event) {
 }
 
 // Routes
+
+// x402 Payment endpoints
+app.post("/x402/pay", handlePaymentSubmission);
+
+// Demo service endpoints with x402 protection
+app.get("/services/research/pulse", x402Protect("10000", "HkrtQ8FGS2rkhCC11Z9gHaeMJ93DAfvutmTyq3bLvERd"), (req, res) => {
+  res.json({
+    service: "Market Pulse",
+    data: "Current Solana ecosystem sentiment: BULLISH. Key signals: Jupiter V2 launch trending, SOL price +5.2% 24h.",
+    timestamp: new Date().toISOString(),
+    paymentInfo: req.x402Payment
+  });
+});
+
+app.get("/services/research/alpha", x402Protect("50000", "HkrtQ8FGS2rkhCC11Z9gHaeMJ93DAfvutmTyq3bLvERd"), (req, res) => {
+  res.json({
+    service: "Alpha Feed",
+    data: [
+      "🔥 @toly just dropped hints about Firedancer performance improvements",
+      "📊 Whale alert: 1M USDC moved to Jupiter for farming",
+      "🚀 New Solana Mobile announcement expected this week"
+    ],
+    timestamp: new Date().toISOString(),
+    paymentInfo: req.x402Payment
+  });
+});
+
+app.get("/services/text-summary", x402Protect("25000", "HkrtQ8FGS2rkhCC11Z9gHaeMJ93DAfvutmTyq3bLvERd"), (req, res) => {
+  const { text } = req.query;
+  if (!text) {
+    return res.status(400).json({ error: "Missing 'text' parameter" });
+  }
+  
+  res.json({
+    service: "Text Summarization",
+    summary: `Summary of provided text (${text.length} chars): ${text.substring(0, 100)}...`,
+    confidence: 0.92,
+    timestamp: new Date().toISOString(),
+    paymentInfo: req.x402Payment
+  });
+});
 
 // GET /agents - list/search agents
 app.get("/agents", (req, res) => {
