@@ -162,6 +162,10 @@ pub mod agent_bazaar {
         rep.rating_distribution[(rating - 1) as usize] = rep.rating_distribution[(rating - 1) as usize]
             .checked_add(1).ok_or(ErrorCode::ArithmeticOverflow)?;
         rep.last_rated_at = timestamp;
+        // NOTE: unique_raters is approximate — same rater with different timestamps
+        // can increment this. True uniqueness would require a per-rater PDA (gas-expensive).
+        // The feedback PDA seeds include rater+timestamp, preventing duplicate feedback
+        // for the same rater at the same second, but not across different timestamps.
         rep.unique_raters = rep.unique_raters.checked_add(1)
             .ok_or(ErrorCode::ArithmeticOverflow)?;
 

@@ -369,13 +369,19 @@ app.post("/feedback", [
     const { agentId, rating, comment, txSignature, amountPaid = 0 } = req.body;
 
     // Check if agent exists and is active
-    const agentStmt = safePreparedStatement(db, "SELECT active FROM agents WHERE agent_id = ?", [agentId]);
+    const agentStmt = safePreparedStatement(db, "SELECT active, owner FROM agents WHERE agent_id = ?", [agentId]);
     const agent = agentStmt.get(agentId);
     if (!agent) {
       return res.status(404).json({ error: "Agent not found" });
     }
     if (!agent.active) {
       return res.status(400).json({ error: "Agent is not active" });
+    }
+
+    // SECURITY: Prevent self-rating (reputation manipulation)
+    const { rater: raterAddress } = req.body;
+    if (raterAddress && raterAddress === agent.owner) {
+      return res.status(403).json({ error: "Cannot rate your own agent" });
     }
 
     const commentHash = comment ? require("crypto").createHash("sha256").update(comment).digest("hex") : null;
@@ -496,6 +502,13 @@ app.put("/agents/:id", [
     const existing = existingStmt.get(agentId);
     if (!existing) {
       return res.status(404).json({ error: "Agent not found" });
+    }
+
+    // SECURITY: Verify ownership before allowing updates
+    // Without this, ANY user can update ANY agent's data
+    const { owner: requestOwner } = req.body;
+    if (!requestOwner || existing.owner !== requestOwner) {
+      return res.status(403).json({ error: "Unauthorized: only the agent owner can update" });
     }
 
     // Build update query dynamically

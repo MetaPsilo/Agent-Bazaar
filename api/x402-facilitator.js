@@ -61,33 +61,50 @@ async function verifyPayment(signature, expectedRecipient, expectedAmount) {
       return { verified: false, error: "Transaction failed" };
     }
 
-    // Parse token transfers from transaction
-    const tokenTransfers = tx.meta?.postTokenBalances?.filter(
-      (balance, index) => {
-        const preBalance = tx.meta.preTokenBalances?.[index];
-        return balance.mint === USDC_MINT.toString() && 
-               balance.uiTokenAmount.amount !== preBalance?.uiTokenAmount.amount;
+    // Build a map of account index -> pre/post balances for USDC
+    // SECURITY: Match by accountIndex, not array position (Solana doesn't guarantee index alignment)
+    const preBalanceMap = new Map();
+    for (const bal of (tx.meta.preTokenBalances || [])) {
+      if (bal.mint === USDC_MINT.toString()) {
+        preBalanceMap.set(bal.accountIndex, parseInt(bal.uiTokenAmount.amount));
       }
-    );
-
-    // Find transfer to expected recipient
-    const relevantTransfer = tokenTransfers?.find(balance => 
-      balance.owner === expectedRecipient
-    );
-
-    if (!relevantTransfer) {
-      return { verified: false, error: "No transfer to expected recipient" };
+    }
+    
+    const postBalanceMap = new Map();
+    for (const bal of (tx.meta.postTokenBalances || [])) {
+      if (bal.mint === USDC_MINT.toString()) {
+        postBalanceMap.set(bal.accountIndex, {
+          amount: parseInt(bal.uiTokenAmount.amount),
+          owner: bal.owner
+        });
+      }
     }
 
-    const transferAmount = parseInt(relevantTransfer.uiTokenAmount.amount);
-    if (transferAmount < expectedAmount) {
-      return { verified: false, error: "Insufficient transfer amount" };
+    // Find the recipient's balance increase
+    let recipientIncrease = 0;
+    let senderAddress = null;
+    
+    for (const [accIdx, postBal] of postBalanceMap) {
+      const preBal = preBalanceMap.get(accIdx) || 0;
+      const delta = postBal.amount - preBal;
+      
+      if (postBal.owner === expectedRecipient && delta > 0) {
+        recipientIncrease += delta;
+      }
+      if (delta < 0) {
+        // This account lost tokens — likely the sender
+        senderAddress = postBal.owner;
+      }
+    }
+
+    if (recipientIncrease < expectedAmount) {
+      return { verified: false, error: `Insufficient transfer: got ${recipientIncrease}, need ${expectedAmount}` };
     }
 
     return {
       verified: true,
-      amount: transferAmount,
-      sender: tx.transaction.message.accountKeys[0].toString()
+      amount: recipientIncrease,
+      sender: senderAddress || tx.transaction.message.accountKeys[0].toString()
     };
 
   } catch (error) {
@@ -152,9 +169,9 @@ function x402Protect(price, agentWallet) {
 
       next();
     } catch (error) {
+      console.error("Payment proof parsing error:", error);
       return res.status(400).json({ 
-        error: "Invalid payment proof",
-        details: error.message 
+        error: "Invalid payment proof"
       });
     }
   };
@@ -187,13 +204,17 @@ async function handlePaymentSubmission(req, res) {
     // Calculate fee split
     const { agentShare, platformFee } = calculateFeeSplit(parseInt(amount));
     
-    // Generate access token (in production, this should be a JWT or similar)
-    const accessToken = Buffer.from(JSON.stringify({
+    // Generate HMAC-signed access token
+    const crypto = require('crypto');
+    const tokenSecret = process.env.TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
+    const tokenPayload = JSON.stringify({
       signature,
       amount: verification.amount,
       timestamp: Date.now(),
       recipient
-    })).toString('base64');
+    });
+    const hmac = crypto.createHmac('sha256', tokenSecret).update(tokenPayload).digest('hex');
+    const accessToken = Buffer.from(tokenPayload).toString('base64') + '.' + hmac;
 
     res.json({
       success: true,
@@ -208,9 +229,9 @@ async function handlePaymentSubmission(req, res) {
 
   } catch (error) {
     console.error("Payment submission error:", error);
+    // SECURITY: Don't leak internal error details to clients
     res.status(500).json({ 
-      error: "Payment processing failed",
-      details: error.message 
+      error: "Payment processing failed"
     });
   }
 }

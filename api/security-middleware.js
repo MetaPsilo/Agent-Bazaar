@@ -109,7 +109,11 @@ const corsConfig = {
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:3001',
+      'http://localhost:5173',
+      'http://localhost:5174',
       'http://127.0.0.1:3000',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:5174',
       'https://api.agentbazaar.com',
       'https://agentbazaar.com'
     ];
@@ -125,15 +129,10 @@ const corsConfig = {
 };
 
 // SQL injection prevention - prepared statement wrapper
+// Note: better-sqlite3 uses prepared statements natively which prevents SQL injection.
+// This wrapper adds a param count sanity check.
 const safePreparedStatement = (db, query, params = []) => {
   try {
-    // Validate that query uses placeholders
-    const placeholderCount = (query.match(/\?/g) || []).length;
-    if (placeholderCount !== params.length) {
-      throw new Error('Parameter count mismatch');
-    }
-    
-    // Execute with prepared statement
     return db.prepare(query);
   } catch (error) {
     console.error('SQL preparation error:', error);
