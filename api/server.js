@@ -351,7 +351,18 @@ app.post("/feedback", [
   validateRating,
   validateAmount,
   body('comment').optional().trim().isLength({ max: 1000 }).escape().withMessage('Comment too long'),
-  body('txSignature').optional().isLength({ min: 32, max: 128 }).withMessage('Invalid transaction signature'),
+  body('txSignature').optional().custom((value) => {
+    if (!value) return true; // Optional field
+    // In development mode, allow demo signatures
+    if (process.env.NODE_ENV === 'development' && value.startsWith('demo_')) {
+      return true;
+    }
+    // Otherwise require proper signature length
+    if (value.length < 32 || value.length > 128) {
+      throw new Error('Invalid transaction signature');
+    }
+    return true;
+  }),
   handleValidationErrors
 ], (req, res) => {
   try {

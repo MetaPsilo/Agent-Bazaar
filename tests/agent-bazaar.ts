@@ -86,7 +86,7 @@ describe("agent_bazaar", () => {
       program.programId
     );
 
-    const timestamp = new anchor.BN(Math.floor(Date.now() / 1000));
+    const timestamp = new anchor.BN(Math.floor(Date.now() / 1000) - 60); // Use timestamp 60 seconds in the past to avoid future timestamp error
     const [feedbackPda] = PublicKey.findProgramAddressSync(
       [
         Buffer.from("feedback"),

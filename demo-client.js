@@ -134,11 +134,22 @@ async function callServiceWithPayment(endpoint, agentWallet, price, params = {})
 }
 
 /**
- * Register an agent in the discovery API
+ * Register an agent in the discovery API (or find existing one)
  */
 async function registerAgent(name, description, agentUri, owner, agentWallet) {
   try {
-    console.log(`\n📝 Registering agent: ${name}`);
+    console.log(`\n📝 Checking for existing agent: ${name}`);
+    
+    // First, check if an agent with this name already exists
+    const existingResponse = await axios.get(`${API_BASE}/agents?q=${encodeURIComponent(name)}`);
+    const existingAgent = existingResponse.data.agents.find(agent => agent.name === name);
+    
+    if (existingAgent) {
+      console.log(`✅ Found existing agent with ID: ${existingAgent.agent_id}`);
+      return existingAgent.agent_id;
+    }
+    
+    console.log(`📝 Registering new agent: ${name}`);
     const response = await axios.post(`${API_BASE}/agents`, {
       name,
       description,
