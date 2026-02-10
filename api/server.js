@@ -467,6 +467,66 @@ app.post("/agents", [
   }
 });
 
+// PUT /agents/:id - update agent
+app.put("/agents/:id", [
+  validateAgentId,
+  validateString('name', 64).optional(),
+  validateString('description', 256).optional(),
+  body('agentUri').optional().isURL().withMessage('Invalid agent URI'),
+  body('active').optional().isBoolean().withMessage('Active must be boolean'),
+  handleValidationErrors
+], (req, res) => {
+  try {
+    const agentId = req.params.id;
+    const { name, description, agentUri, active } = req.body;
+
+    // Check if agent exists
+    const existingStmt = safePreparedStatement(db, "SELECT * FROM agents WHERE agent_id = ?", [agentId]);
+    const existing = existingStmt.get(agentId);
+    if (!existing) {
+      return res.status(404).json({ error: "Agent not found" });
+    }
+
+    // Build update query dynamically
+    const updates = [];
+    const values = [];
+    
+    if (name !== undefined) {
+      updates.push("name = ?");
+      values.push(name);
+    }
+    if (description !== undefined) {
+      updates.push("description = ?");
+      values.push(description);
+    }
+    if (agentUri !== undefined) {
+      updates.push("agent_uri = ?");
+      values.push(agentUri);
+    }
+    if (active !== undefined) {
+      updates.push("active = ?");
+      values.push(active ? 1 : 0);
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    updates.push("updated_at = ?");
+    values.push(Math.floor(Date.now() / 1000));
+    values.push(agentId);
+
+    const updateQuery = `UPDATE agents SET ${updates.join(", ")} WHERE agent_id = ?`;
+    const updateStmt = safePreparedStatement(db, updateQuery, values);
+    updateStmt.run(...values);
+
+    res.json({ success: true, agentId: Number(agentId) });
+  } catch (error) {
+    console.error("Agent update error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
 // Health
 app.get("/health", (_, res) => res.json({ status: "ok" }));
 
