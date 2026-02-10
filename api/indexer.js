@@ -29,7 +29,12 @@ function readString(buf, offset, maxLength = 1000) {
     if (len > maxLength) throw new Error(`String too long: ${len} > ${maxLength}`);
     if (offset + 4 + len > buf.length) throw new Error("Buffer underrun reading string data");
     
-    const str = buf.slice(offset + 4, offset + 4 + len).toString("utf8");
+    let str = buf.slice(offset + 4, offset + 4 + len).toString("utf8");
+    
+    // SECURITY: Strip null bytes and control characters from on-chain data
+    // Attacker could register agents with malicious names on-chain
+    str = str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+    
     return [str, offset + 4 + len];
   } catch (error) {
     console.error("String deserialization error:", error);

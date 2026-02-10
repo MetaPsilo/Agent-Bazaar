@@ -32,7 +32,16 @@ const app = express();
 // Security middleware
 app.use(securityHeaders);
 app.use(cors(corsConfig));
-app.use(express.json({ limit: '1mb' })); // Limit request size
+// SECURITY: Reject __proto__ and constructor.prototype to prevent prototype pollution
+app.use(express.json({ 
+  limit: '1mb',
+  verify: (req, res, buf) => {
+    const str = buf.toString();
+    if (str.includes('__proto__') || str.includes('constructor') && str.includes('prototype')) {
+      throw new Error('Forbidden payload');
+    }
+  }
+}));
 app.use(generalRateLimit);
 
 // SQLite setup
@@ -582,6 +591,12 @@ app.put("/agents/:id", [
 
 // Health
 app.get("/health", (_, res) => res.json({ status: "ok" }));
+
+// SECURITY: Connection timeouts to prevent Slowloris attacks
+server.timeout = 30000; // 30s request timeout
+server.headersTimeout = 10000; // 10s to send headers
+server.keepAliveTimeout = 5000; // 5s keep-alive
+server.maxHeadersCount = 50; // Limit header count
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

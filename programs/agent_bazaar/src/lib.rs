@@ -120,6 +120,21 @@ pub mod agent_bazaar {
         Ok(())
     }
 
+    /// Update protocol authority (governance). Only current authority can call.
+    pub fn update_authority(ctx: Context<UpdateAuthority>, new_authority: Pubkey) -> Result<()> {
+        let state = &mut ctx.accounts.protocol_state;
+        state.authority = new_authority;
+        Ok(())
+    }
+
+    /// Update platform fee. Only authority can call.
+    pub fn update_fee(ctx: Context<UpdateAuthority>, new_fee_bps: u16) -> Result<()> {
+        require!(new_fee_bps <= 10000, ErrorCode::InvalidFee);
+        let state = &mut ctx.accounts.protocol_state;
+        state.platform_fee_bps = new_fee_bps;
+        Ok(())
+    }
+
     pub fn submit_feedback(
         ctx: Context<SubmitFeedback>,
         agent_id: u64,
@@ -131,6 +146,16 @@ pub mod agent_bazaar {
         require!(rating >= 1 && rating <= 5, ErrorCode::InvalidRating);
         require!(amount_paid > 0, ErrorCode::InvalidAmount);
         require!(timestamp > 0, ErrorCode::InvalidTimestamp);
+
+        // SECURITY: Prevent self-rating on-chain
+        require!(
+            ctx.accounts.rater.key() != ctx.accounts.agent_identity.owner,
+            ErrorCode::SelfRating
+        );
+
+        // SECURITY: Cap amount_paid to prevent volume inflation
+        // Real payment verification would require SPL token transfer in the instruction
+        require!(amount_paid <= 1_000_000_000, ErrorCode::AmountTooLarge); // Max 1000 USDC
         
         let clock = Clock::get()?;
         require!(
@@ -231,6 +256,18 @@ pub struct RegisterAgent<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateAuthority<'info> {
+    #[account(
+        mut,
+        seeds = [b"protocol"],
+        bump = protocol_state.bump,
+        has_one = authority,
+    )]
+    pub protocol_state: Account<'info, ProtocolState>,
+    pub authority: Signer<'info>,
 }
 
 #[derive(Accounts)]
@@ -413,4 +450,8 @@ pub enum ErrorCode {
     AgentStillActive,
     #[msg("Recent activity: cannot close within 7 days of last feedback")]
     RecentActivity,
+    #[msg("Cannot rate your own agent")]
+    SelfRating,
+    #[msg("Amount too large: max 1,000,000,000 lamports (1000 USDC)")]
+    AmountTooLarge,
 }

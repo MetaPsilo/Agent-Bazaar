@@ -53,7 +53,9 @@ const validateString = (field, maxLength) => body(field)
   .trim()
   .isLength({ max: maxLength })
   .withMessage(`${field} must be at most ${maxLength} characters`)
-  .escape();
+  // SECURITY: Don't use .escape() on JSON API — it HTML-encodes chars (&amp; etc)
+  // which corrupts legitimate data. Instead, strip control chars and null bytes.
+  .customSanitizer(value => value ? value.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') : value);
 
 const validatePubkey = (field) => body(field)
   .isLength({ min: 32, max: 44 })
@@ -78,7 +80,7 @@ const validateSearchQuery = query('q')
   .trim()
   .isLength({ max: 100 })
   .withMessage('Search query must be at most 100 characters')
-  .escape();
+  .customSanitizer(value => value ? value.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') : value);
 
 const validateMinRating = query('minRating')
   .optional()
