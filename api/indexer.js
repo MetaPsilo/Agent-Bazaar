@@ -158,11 +158,89 @@ async function indexAllAgents() {
   }
 }
 
-// Run indexer
-indexAllAgents().then(() => {
-  console.log("Indexing complete.");
+// Track last indexed count to avoid re-indexing everything
+let lastIndexedCount = 0;
 
-  // Set up polling (every 30 seconds)
-  setInterval(indexAllAgents, 30000);
-  console.log("Polling every 30s for updates...");
+async function indexNewAgents() {
+  try {
+    const [protocolPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("protocol")],
+      programId
+    );
+    const protocolInfo = await connection.getAccountInfo(protocolPda);
+    if (!protocolInfo) return;
+
+    const data = protocolInfo.data;
+    let offset = 8;
+    let authority, agentCount;
+    [authority, offset] = readPubkey(data, offset);
+    [agentCount, offset] = readU64(data, offset);
+
+    if (agentCount <= lastIndexedCount) {
+      return; // No new agents
+    }
+
+    console.log(`Found ${agentCount - lastIndexedCount} new agents to index`);
+    
+    // Only index new agents (from lastIndexedCount to agentCount)
+    for (let i = lastIndexedCount; i < agentCount; i++) {
+      // ... same indexing logic per agent (extracted from indexAllAgents)
+      const idBuf = Buffer.alloc(8);
+      idBuf.writeBigUInt64LE(BigInt(i));
+      const [agentPda] = PublicKey.findProgramAddressSync([Buffer.from("agent"), idBuf], programId);
+      const [repPda] = PublicKey.findProgramAddressSync([Buffer.from("reputation"), idBuf], programId);
+      
+      try {
+        const agentInfo = await connection.getAccountInfo(agentPda);
+        if (!agentInfo) continue;
+        const d = agentInfo.data;
+        let off = 8;
+        let agentId, owner, agentWallet, name, description, agentUri, active, registeredAt, updatedAt;
+        [agentId, off] = readU64(d, off);
+        [owner, off] = readPubkey(d, off);
+        [agentWallet, off] = readPubkey(d, off);
+        [name, off] = readString(d, off);
+        [description, off] = readString(d, off);
+        [agentUri, off] = readString(d, off);
+        active = d.readUInt8(off); off += 1;
+        [registeredAt, off] = readI64(d, off);
+        [updatedAt, off] = readI64(d, off);
+        
+        db.prepare(`INSERT OR REPLACE INTO agents (agent_id, owner, agent_wallet, name, description, agent_uri, active, registered_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(agentId, owner, agentWallet, name, description, agentUri, active, registeredAt, updatedAt);
+        
+        const repInfo = await connection.getAccountInfo(repPda);
+        if (repInfo) {
+          const r = repInfo.data;
+          let rOff = 8;
+          let repAgentId, totalRatings, ratingSum, totalVolume, uniqueRaters;
+          [repAgentId, rOff] = readU64(r, rOff);
+          [totalRatings, rOff] = readU64(r, rOff);
+          [ratingSum, rOff] = readU64(r, rOff);
+          [totalVolume, rOff] = readU64(r, rOff);
+          [uniqueRaters, rOff] = readU64(r, rOff);
+          const dist = [];
+          for (let s = 0; s < 5; s++) { let val; [val, rOff] = readU64(r, rOff); dist.push(val); }
+          db.prepare(`INSERT OR REPLACE INTO reputation (agent_id, total_ratings, rating_sum, total_volume, unique_raters, rating_distribution) VALUES (?, ?, ?, ?, ?, ?)`).run(agentId, totalRatings, ratingSum, totalVolume, uniqueRaters, JSON.stringify(dist));
+        }
+        console.log(`  Indexed agent ${agentId}: ${name}`);
+      } catch (e) {
+        console.error(`  Error indexing agent ${i}:`, e.message);
+      }
+    }
+    
+    lastIndexedCount = agentCount;
+    db.prepare("UPDATE protocol_stats SET total_agents = ? WHERE id = 1").run(agentCount);
+  } catch (e) {
+    console.error("Incremental indexing error:", e.message);
+  }
+}
+
+// Run full index on startup, then incremental polling
+indexAllAgents().then(() => {
+  console.log("Initial indexing complete.");
+  lastIndexedCount = 0; // Will be set properly on first incremental run
+  
+  // SECURITY: Use incremental indexing to prevent O(n) DoS via registration spam
+  setInterval(indexNewAgents, 30000);
+  console.log("Incremental polling every 30s...");
 });

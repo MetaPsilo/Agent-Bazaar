@@ -26,6 +26,12 @@ const paymentRateLimit = createRateLimit(
   'Too many payment attempts, please try again later.'
 );
 
+const registrationRateLimit = createRateLimit(
+  60 * 60 * 1000, // 1 hour
+  5, // 5 registrations per hour per IP
+  'Too many agent registrations, please try again later.'
+);
+
 const feedbackRateLimit = createRateLimit(
   60 * 1000, // 1 minute
   5, // 5 feedback submissions per minute
@@ -155,6 +161,7 @@ const securityHeaders = (req, res, next) => {
 module.exports = {
   generalRateLimit,
   paymentRateLimit,
+  registrationRateLimit,
   feedbackRateLimit,
   validateAgentId,
   validateRating,

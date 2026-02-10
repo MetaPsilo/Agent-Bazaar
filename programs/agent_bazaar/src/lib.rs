@@ -106,6 +106,15 @@ pub mod agent_bazaar {
         Ok(())
     }
 
+    /// Reactivate a previously deactivated agent. Only owner can call.
+    pub fn reactivate_agent(ctx: Context<UpdateAgent>) -> Result<()> {
+        let agent = &mut ctx.accounts.agent_identity;
+        require!(!agent.active, ErrorCode::AgentAlreadyActive);
+        agent.active = true;
+        agent.updated_at = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
+
     pub fn close_agent(ctx: Context<CloseAgent>) -> Result<()> {
         require!(!ctx.accounts.agent_identity.active, ErrorCode::AgentStillActive);
         
@@ -450,6 +459,8 @@ pub enum ErrorCode {
     AgentStillActive,
     #[msg("Recent activity: cannot close within 7 days of last feedback")]
     RecentActivity,
+    #[msg("Agent is already active")]
+    AgentAlreadyActive,
     #[msg("Cannot rate your own agent")]
     SelfRating,
     #[msg("Amount too large: max 1,000,000,000 lamports (1000 USDC)")]

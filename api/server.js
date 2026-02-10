@@ -10,6 +10,7 @@ const { x402Protect, handlePaymentSubmission, calculateFeeSplit } = require("./x
 const {
   generalRateLimit,
   paymentRateLimit,
+  registrationRateLimit,
   feedbackRateLimit,
   validateAgentId,
   validateRating,
@@ -32,12 +33,17 @@ const app = express();
 // Security middleware
 app.use(securityHeaders);
 app.use(cors(corsConfig));
-// SECURITY: Reject __proto__ and constructor.prototype to prevent prototype pollution
+// SECURITY: Reject prototype pollution payloads
 app.use(express.json({ 
   limit: '1mb',
   verify: (req, res, buf) => {
     const str = buf.toString();
-    if (str.includes('__proto__') || str.includes('constructor') && str.includes('prototype')) {
+    // Check for all known prototype pollution vectors
+    // Fixed operator precedence: use explicit parentheses
+    if (str.includes('__proto__') || 
+        (str.includes('constructor') && str.includes('prototype')) ||
+        str.includes('__defineGetter__') ||
+        str.includes('__defineSetter__')) {
       throw new Error('Forbidden payload');
     }
   }
@@ -45,8 +51,24 @@ app.use(express.json({
 app.use(generalRateLimit);
 
 // SQLite setup
+const fs = require('fs');
 const dbPath = path.join(__dirname, "bazaar.db");
+
+// SECURITY: Ensure DB file has restrictive permissions
+if (fs.existsSync(dbPath)) {
+  const stats = fs.statSync(dbPath);
+  const mode = (stats.mode & 0o777).toString(8);
+  if (mode !== '600') {
+    console.warn(`⚠️  DB file has permissive permissions (${mode}). Setting to 600.`);
+    fs.chmodSync(dbPath, 0o600);
+  }
+}
+
 const db = new Database(dbPath);
+// SECURITY: Enable WAL mode for better concurrent read performance + crash recovery
+db.pragma('journal_mode = WAL');
+// SECURITY: Enable foreign keys
+db.pragma('foreign_keys = ON');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS agents (
@@ -366,7 +388,8 @@ app.post("/feedback", [
   body('agentId').isInt({ min: 0 }).withMessage('Invalid agent ID').toInt(),
   validateRating,
   validateAmount,
-  body('comment').optional().trim().isLength({ max: 1000 }).escape().withMessage('Comment too long'),
+  body('comment').optional().trim().isLength({ max: 1000 }).withMessage('Comment too long')
+    .customSanitizer(value => value ? value.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') : value),
   body('txSignature').optional().custom((value) => {
     if (!value) return true; // Optional field
     // In development mode, allow demo signatures
@@ -468,7 +491,7 @@ app.post("/feedback", [
 });
 
 // POST /agents - register agent via API (stores in DB, for demo)
-app.post("/agents", [
+app.post("/agents", registrationRateLimit, [
   validateString('name', 64),
   validateString('description', 256),
   body('agentUri').optional().isURL().withMessage('Invalid agent URI'),

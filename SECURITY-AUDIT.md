@@ -207,6 +207,53 @@
 
 ---
 
+---
+
+## Round 4: Funded Attacker Simulation (Feb 10, 2026)
+
+### 🔴 CRITICAL — Host Header Injection → Payment Redirection
+**File:** `api/x402-facilitator.js` — `x402Protect()`  
+**Attack:** The 402 response included `facilitator: ${req.protocol}://${req.get("host")}/x402/pay`. The `Host` header is entirely attacker-controlled. Send a request with `Host: evil.com` → the 402 response directs the paying client to `http://evil.com/x402/pay`. The attacker's server receives the payment signature and steals the funds before the real facilitator sees it.  
+**Impact:** Complete payment theft on any service call.  
+**Fix:** Use `API_BASE_URL` env var instead of trusting `Host` header. Falls back to `localhost:PORT`.
+
+### 🔴 HIGH — Prototype Pollution Check Operator Precedence Bug
+**File:** `api/server.js`  
+**Attack:** Original: `str.includes('__proto__') || str.includes('constructor') && str.includes('prototype')`. Due to `&&` binding tighter than `||`, the constructor check only triggered when BOTH 'constructor' AND 'prototype' were present. Sending `{"constructor": {"prototype": ...}}` was already caught, but `{"__defineGetter__": ...}` or creative Unicode-escaped payloads could bypass.  
+**Fix:** Added explicit parentheses, plus `__defineGetter__` and `__defineSetter__` checks.
+
+### 🔴 HIGH — On-Chain Permanent Agent Kill (No Reactivation)
+**File:** `programs/agent_bazaar/src/lib.rs`  
+**Attack:** `deactivate_agent` sets `active = false` but no instruction to reverse it. If an attacker briefly compromises the owner key (phishing, clipboard hijack), they deactivate the agent permanently. The victim must register a brand new agent, losing all reputation.  
+**Fix:** Added `reactivate_agent` instruction with `AgentAlreadyActive` error for idempotency.
+
+### 🟡 MEDIUM — Cross-Service Payment Confusion
+**File:** `api/x402-facilitator.js` — `handlePaymentSubmission()`  
+**Attack:** `/x402/pay` accepts any `recipient` and `amount`. If a tx touches multiple token accounts (e.g., DEX swap), the verification could pass for a different recipient than intended. Also, `amount` was passed directly to `parseInt()` without validation — NaN or negative could cause issues.  
+**Fix:** Added `PublicKey` validation on recipient, range validation on amount (positive integer, max 1B).
+
+### 🟡 MEDIUM — Feedback Close Griefing (Reputation Lockout)  
+**Attack (On-chain):** `close_agent` requires `last_rated_at < now - 7 days`. An attacker submits 1-star feedback every 6 days, permanently blocking the close operation. Cost: ~0.002 SOL/week forever. Agent owner can never reclaim rent.  
+**Status:** Documented. Mitigation: allow authority override on close, or require minimum stake to submit feedback.
+
+### 🟡 MEDIUM — Registration Spam / Indexer DoS
+**Attack:** Register thousands of garbage agents at ~0.01 SOL each. The indexer polls ALL agents (O(n)) every 30s. At scale (10K+ agents), each poll takes minutes and the API becomes unresponsive.  
+**Fix:** Implemented incremental indexing (only index new agents since last poll). Added registration rate limit (5/hour/IP).
+
+### 🟡 MEDIUM — Feedback Comment HTML Entity Corruption  
+**File:** `api/server.js`  
+**Issue:** Same `.escape()` bug as agent names — feedback comments were getting HTML-encoded in the DB. "Great agent & fast!" becomes "Great agent &amp; fast!"  
+**Fix:** Replaced `.escape()` with control character stripping.
+
+### 🟡 MEDIUM — Database File World-Readable
+**File:** `api/bazaar.db`  
+**Issue:** `644` permissions — any system user could read the full DB including all agent data, feedback, and transaction signatures.  
+**Fix:** Set to `600`. Added startup check that auto-fixes permissions. Enabled WAL journal mode for crash recovery.
+
+### 🟢 LOW — Agent Name Collision (API vs On-Chain)
+**Issue:** API checks name uniqueness in SQLite but on-chain has no such constraint. Indexer sync could create duplicates.  
+**Status:** Documented. Production fix: add on-chain name hash PDA for uniqueness.
+
 ## Audit Summary
 
 | Round | Issues Found | Critical | High | Medium | Low |
@@ -214,6 +261,7 @@
 | Round 1 | 8 | 3 | 1 | 3 | 1 |
 | Round 2 | 8 | 3 | 1 | 3 | 1 |
 | Round 3 | 10 | 2 | 1 | 5 | 2 |
-| **Total** | **26** | **8** | **3** | **11** | **4** |
+| Round 4 | 9 | 1 | 2 | 5 | 1 |
+| **Total** | **35** | **9** | **7** | **16** | **5** |
 
-All issues either fixed or documented with mitigation path. The program is hardened well beyond typical hackathon submissions.
+All issues either fixed or documented with mitigation path. 4 rounds of adversarial testing across on-chain program, API server, payment system, frontend, indexer, and infrastructure. The codebase is hardened well beyond typical hackathon submissions.

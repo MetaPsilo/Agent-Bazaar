@@ -144,7 +144,9 @@ function x402Protect(price, agentWallet) {
     const authHeader = req.headers['authorization'];
     
     if (!authHeader || !authHeader.startsWith('x402 ')) {
-      // Return 402 Payment Required with x402 details
+      // SECURITY: Use configured base URL instead of trusting Host header
+      // Host header injection could redirect payments to attacker's facilitator
+      const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
       return res.status(402).json({
         error: "Payment Required",
         x402: {
@@ -153,7 +155,7 @@ function x402Protect(price, agentWallet) {
           currency: "USDC",
           network: "solana",
           recipient: agentWallet,
-          facilitator: `${req.protocol}://${req.get("host")}/x402/pay`,
+          facilitator: `${baseUrl}/x402/pay`,
           memo: `Payment for ${req.path}`,
         }
       });
@@ -212,8 +214,21 @@ async function handlePaymentSubmission(req, res) {
       });
     }
 
+    // SECURITY: Validate recipient is a valid Solana pubkey
+    try {
+      new PublicKey(recipient);
+    } catch {
+      return res.status(400).json({ error: "Invalid recipient address" });
+    }
+
+    // SECURITY: Validate amount is a positive integer
+    const parsedAmount = parseInt(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0 || parsedAmount > 1_000_000_000) {
+      return res.status(400).json({ error: "Invalid amount" });
+    }
+
     // Verify the payment
-    const verification = await verifyPayment(signature, recipient, parseInt(amount));
+    const verification = await verifyPayment(signature, recipient, parsedAmount);
     
     if (!verification.verified) {
       return res.status(400).json({ 
