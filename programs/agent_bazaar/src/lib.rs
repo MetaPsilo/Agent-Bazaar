@@ -106,6 +106,20 @@ pub mod agent_bazaar {
         Ok(())
     }
 
+    pub fn close_agent(ctx: Context<CloseAgent>) -> Result<()> {
+        require!(!ctx.accounts.agent_identity.active, ErrorCode::AgentStillActive);
+        
+        // Additional safety: ensure no recent feedback to prevent abuse
+        let clock = Clock::get()?;
+        require!(
+            ctx.accounts.agent_reputation.last_rated_at == 0 ||
+            ctx.accounts.agent_reputation.last_rated_at < clock.unix_timestamp - 86400 * 7, // 7 days
+            ErrorCode::RecentActivity
+        );
+
+        Ok(())
+    }
+
     pub fn submit_feedback(
         ctx: Context<SubmitFeedback>,
         agent_id: u64,
@@ -115,6 +129,18 @@ pub mod agent_bazaar {
         timestamp: i64,
     ) -> Result<()> {
         require!(rating >= 1 && rating <= 5, ErrorCode::InvalidRating);
+        require!(amount_paid > 0, ErrorCode::InvalidAmount);
+        require!(timestamp > 0, ErrorCode::InvalidTimestamp);
+        
+        let clock = Clock::get()?;
+        require!(
+            timestamp <= clock.unix_timestamp,
+            ErrorCode::FutureTimestamp
+        );
+        require!(
+            timestamp >= clock.unix_timestamp - 86400, // Max 24h old
+            ErrorCode::TimestampTooOld
+        );
 
         let feedback = &mut ctx.accounts.feedback;
         feedback.agent_id = agent_id;
@@ -127,17 +153,23 @@ pub mod agent_bazaar {
         feedback.bump = ctx.bumps.feedback;
 
         let rep = &mut ctx.accounts.agent_reputation;
-        rep.total_ratings += 1;
-        rep.rating_sum += rating as u64;
-        rep.total_volume += amount_paid;
-        rep.rating_distribution[(rating - 1) as usize] += 1;
+        rep.total_ratings = rep.total_ratings.checked_add(1)
+            .ok_or(ErrorCode::ArithmeticOverflow)?;
+        rep.rating_sum = rep.rating_sum.checked_add(rating as u64)
+            .ok_or(ErrorCode::ArithmeticOverflow)?;
+        rep.total_volume = rep.total_volume.checked_add(amount_paid)
+            .ok_or(ErrorCode::ArithmeticOverflow)?;
+        rep.rating_distribution[(rating - 1) as usize] = rep.rating_distribution[(rating - 1) as usize]
+            .checked_add(1).ok_or(ErrorCode::ArithmeticOverflow)?;
         rep.last_rated_at = timestamp;
-        // simplified: not tracking unique_raters on-chain for hackathon
-        rep.unique_raters += 1;
+        rep.unique_raters = rep.unique_raters.checked_add(1)
+            .ok_or(ErrorCode::ArithmeticOverflow)?;
 
         let state = &mut ctx.accounts.protocol_state;
-        state.total_transactions += 1;
-        state.total_volume += amount_paid;
+        state.total_transactions = state.total_transactions.checked_add(1)
+            .ok_or(ErrorCode::ArithmeticOverflow)?;
+        state.total_volume = state.total_volume.checked_add(amount_paid)
+            .ok_or(ErrorCode::ArithmeticOverflow)?;
 
         emit!(FeedbackSubmitted {
             agent_id,
@@ -173,6 +205,7 @@ pub struct RegisterAgent<'info> {
         mut,
         seeds = [b"protocol"],
         bump = protocol_state.bump,
+        constraint = protocol_state.agent_count < u64::MAX @ ErrorCode::TooManyAgents,
     )]
     pub protocol_state: Account<'info, ProtocolState>,
     #[account(
@@ -207,6 +240,24 @@ pub struct UpdateAgent<'info> {
 }
 
 #[derive(Accounts)]
+pub struct CloseAgent<'info> {
+    #[account(
+        mut,
+        has_one = owner,
+        close = owner,
+    )]
+    pub agent_identity: Account<'info, AgentIdentity>,
+    #[account(
+        mut,
+        constraint = agent_reputation.agent_id == agent_identity.agent_id,
+        close = owner,
+    )]
+    pub agent_reputation: Account<'info, AgentReputation>,
+    #[account(mut)]
+    pub owner: Signer<'info>,
+}
+
+#[derive(Accounts)]
 #[instruction(agent_id: u64, rating: u8, comment_hash: [u8; 32], amount_paid: u64, timestamp: i64)]
 pub struct SubmitFeedback<'info> {
     #[account(
@@ -218,12 +269,15 @@ pub struct SubmitFeedback<'info> {
     #[account(
         seeds = [b"agent", agent_id.to_le_bytes().as_ref()],
         bump = agent_identity.bump,
+        constraint = agent_identity.active @ ErrorCode::InvalidAgent,
+        constraint = agent_identity.agent_id == agent_id @ ErrorCode::InvalidAgent,
     )]
     pub agent_identity: Account<'info, AgentIdentity>,
     #[account(
         mut,
         seeds = [b"reputation", agent_id.to_le_bytes().as_ref()],
         bump = agent_reputation.bump,
+        constraint = agent_reputation.agent_id == agent_id @ ErrorCode::InvalidAgent,
     )]
     pub agent_reputation: Account<'info, AgentReputation>,
     #[account(
@@ -337,4 +391,22 @@ pub enum ErrorCode {
     CategoryTooLong,
     #[msg("Invalid rating: must be 1-5")]
     InvalidRating,
+    #[msg("Invalid amount: must be > 0")]
+    InvalidAmount,
+    #[msg("Invalid timestamp: must be > 0")]
+    InvalidTimestamp,
+    #[msg("Timestamp cannot be in the future")]
+    FutureTimestamp,
+    #[msg("Timestamp too old: max 24h")]
+    TimestampTooOld,
+    #[msg("Arithmetic overflow")]
+    ArithmeticOverflow,
+    #[msg("Invalid agent: agent not found or inactive")]
+    InvalidAgent,
+    #[msg("Too many agents: registration limit reached")]
+    TooManyAgents,
+    #[msg("Agent still active: cannot close")]
+    AgentStillActive,
+    #[msg("Recent activity: cannot close within 7 days of last feedback")]
+    RecentActivity,
 }

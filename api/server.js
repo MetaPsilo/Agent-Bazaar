@@ -7,9 +7,33 @@ const Database = require("better-sqlite3");
 const path = require("path");
 const { x402Protect, handlePaymentSubmission, calculateFeeSplit } = require("./x402-facilitator");
 
+const {
+  generalRateLimit,
+  paymentRateLimit,
+  feedbackRateLimit,
+  validateAgentId,
+  validateRating,
+  validateAmount,
+  validateString,
+  validatePubkey,
+  validatePaginationQuery,
+  validateSearchQuery,
+  validateMinRating,
+  handleValidationErrors,
+  corsConfig,
+  safePreparedStatement,
+  securityHeaders,
+} = require("./security-middleware");
+
+const { query, body } = require("express-validator");
+
 const app = express();
-app.use(cors());
-app.use(express.json());
+
+// Security middleware
+app.use(securityHeaders);
+app.use(cors(corsConfig));
+app.use(express.json({ limit: '1mb' })); // Limit request size
+app.use(generalRateLimit);
 
 // SQLite setup
 const dbPath = path.join(__dirname, "bazaar.db");
@@ -79,8 +103,8 @@ function broadcast(event) {
 
 // Routes
 
-// x402 Payment endpoints
-app.post("/x402/pay", handlePaymentSubmission);
+// x402 Payment endpoints with rate limiting
+app.post("/x402/pay", paymentRateLimit, handlePaymentSubmission);
 
 // Demo service endpoints with x402 protection
 app.get("/services/research/pulse", x402Protect("10000", "HkrtQ8FGS2rkhCC11Z9gHaeMJ93DAfvutmTyq3bLvERd"), (req, res) => {
@@ -121,55 +145,78 @@ app.get("/services/text-summary", x402Protect("25000", "HkrtQ8FGS2rkhCC11Z9gHaeM
 });
 
 // GET /agents - list/search agents
-app.get("/agents", (req, res) => {
-  const { category, minRating, sort = "rating", limit = 20, offset = 0, q } = req.query;
-  
-  let query = `
-    SELECT a.*, r.total_ratings, r.rating_sum, r.total_volume, r.rating_distribution,
-           CASE WHEN r.total_ratings > 0 THEN CAST(r.rating_sum AS REAL) / r.total_ratings ELSE 0 END as avg_rating
-    FROM agents a
-    LEFT JOIN reputation r ON a.agent_id = r.agent_id
-    WHERE a.active = 1
-  `;
-  const params = [];
+app.get("/agents", [
+  validatePaginationQuery,
+  validateSearchQuery,
+  validateMinRating,
+  query('sort').optional().isIn(['rating', 'transactions', 'volume', 'newest']).withMessage('Invalid sort parameter'),
+  handleValidationErrors
+], (req, res) => {
+  try {
+    const { category, minRating, sort = "rating", limit = 20, offset = 0, q } = req.query;
+    
+    let queryStr = `
+      SELECT a.*, r.total_ratings, r.rating_sum, r.total_volume, r.rating_distribution,
+             CASE WHEN r.total_ratings > 0 THEN CAST(r.rating_sum AS REAL) / r.total_ratings ELSE 0 END as avg_rating
+      FROM agents a
+      LEFT JOIN reputation r ON a.agent_id = r.agent_id
+      WHERE a.active = 1
+    `;
+    const params = [];
 
-  if (q) {
-    query += ` AND (a.name LIKE ? OR a.description LIKE ?)`;
-    params.push(`%${q}%`, `%${q}%`);
+    if (q) {
+      queryStr += ` AND (a.name LIKE ? OR a.description LIKE ?)`;
+      params.push(`%${q}%`, `%${q}%`);
+    }
+    if (minRating) {
+      queryStr += ` AND (CASE WHEN r.total_ratings > 0 THEN CAST(r.rating_sum AS REAL) / r.total_ratings ELSE 0 END) >= ?`;
+      params.push(Number(minRating));
+    }
+
+    const sortMap = {
+      rating: "avg_rating DESC",
+      transactions: "r.total_ratings DESC",
+      volume: "r.total_volume DESC",
+      newest: "a.registered_at DESC",
+    };
+    queryStr += ` ORDER BY ${sortMap[sort]}`;
+    queryStr += ` LIMIT ? OFFSET ?`;
+    params.push(Number(limit), Number(offset));
+
+    const agentStmt = safePreparedStatement(db, queryStr, params);
+    const agents = agentStmt.all(...params);
+    
+    const countStmt = safePreparedStatement(db, "SELECT COUNT(*) as c FROM agents WHERE active = 1", []);
+    const total = countStmt.get().c;
+
+    res.json({ agents, total, offset: Number(offset), limit: Number(limit) });
+  } catch (error) {
+    console.error("Agents query error:", error);
+    res.status(500).json({ error: "Database error" });
   }
-  if (minRating) {
-    query += ` AND (CASE WHEN r.total_ratings > 0 THEN CAST(r.rating_sum AS REAL) / r.total_ratings ELSE 0 END) >= ?`;
-    params.push(Number(minRating));
-  }
-
-  const sortMap = {
-    rating: "avg_rating DESC",
-    transactions: "r.total_ratings DESC",
-    volume: "r.total_volume DESC",
-    newest: "a.registered_at DESC",
-  };
-  query += ` ORDER BY ${sortMap[sort] || "avg_rating DESC"}`;
-  query += ` LIMIT ? OFFSET ?`;
-  params.push(Number(limit), Number(offset));
-
-  const agents = db.prepare(query).all(...params);
-  const total = db.prepare("SELECT COUNT(*) as c FROM agents WHERE active = 1").get().c;
-
-  res.json({ agents, total, offset: Number(offset), limit: Number(limit) });
 });
 
 // GET /agents/:id
-app.get("/agents/:id", (req, res) => {
-  const agent = db.prepare(`
-    SELECT a.*, r.total_ratings, r.rating_sum, r.total_volume, r.unique_raters, r.rating_distribution,
-           CASE WHEN r.total_ratings > 0 THEN CAST(r.rating_sum AS REAL) / r.total_ratings ELSE 0 END as avg_rating
-    FROM agents a
-    LEFT JOIN reputation r ON a.agent_id = r.agent_id
-    WHERE a.agent_id = ?
-  `).get(req.params.id);
-
-  if (!agent) return res.status(404).json({ error: "Agent not found" });
-  res.json(agent);
+app.get("/agents/:id", [
+  validateAgentId,
+  handleValidationErrors
+], (req, res) => {
+  try {
+    const stmt = safePreparedStatement(db, `
+      SELECT a.*, r.total_ratings, r.rating_sum, r.total_volume, r.unique_raters, r.rating_distribution,
+             CASE WHEN r.total_ratings > 0 THEN CAST(r.rating_sum AS REAL) / r.total_ratings ELSE 0 END as avg_rating
+      FROM agents a
+      LEFT JOIN reputation r ON a.agent_id = r.agent_id
+      WHERE a.agent_id = ?
+    `, [req.params.id]);
+    
+    const agent = stmt.get(req.params.id);
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
+    res.json(agent);
+  } catch (error) {
+    console.error("Agent fetch error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // GET /agents/:id/feedback
@@ -209,64 +256,126 @@ app.get("/leaderboard", (req, res) => {
 });
 
 // POST /feedback - submit feedback (simplified, stores in DB)
-app.post("/feedback", (req, res) => {
-  const { agentId, rating, comment, txSignature, amountPaid } = req.body;
-  if (!agentId === undefined || !rating || rating < 1 || rating > 5) {
-    return res.status(400).json({ error: "Invalid feedback" });
+app.post("/feedback", [
+  feedbackRateLimit,
+  body('agentId').isInt({ min: 0 }).withMessage('Invalid agent ID').toInt(),
+  validateRating,
+  validateAmount,
+  body('comment').optional().trim().isLength({ max: 1000 }).escape().withMessage('Comment too long'),
+  body('txSignature').optional().isLength({ min: 32, max: 128 }).withMessage('Invalid transaction signature'),
+  handleValidationErrors
+], (req, res) => {
+  try {
+    const { agentId, rating, comment, txSignature, amountPaid = 0 } = req.body;
+
+    // Check if agent exists and is active
+    const agentStmt = safePreparedStatement(db, "SELECT active FROM agents WHERE agent_id = ?", [agentId]);
+    const agent = agentStmt.get(agentId);
+    if (!agent) {
+      return res.status(404).json({ error: "Agent not found" });
+    }
+    if (!agent.active) {
+      return res.status(400).json({ error: "Agent is not active" });
+    }
+
+    const commentHash = comment ? require("crypto").createHash("sha256").update(comment).digest("hex") : null;
+    const now = Math.floor(Date.now() / 1000);
+
+    // Use transaction for atomicity
+    const transaction = db.transaction(() => {
+      // Insert feedback
+      const insertFeedbackStmt = safePreparedStatement(db,
+        "INSERT INTO feedback (agent_id, rater, rating, comment_hash, amount_paid, created_at, tx_signature) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [agentId, "api-user", rating, commentHash, amountPaid, now, txSignature || null]
+      );
+      insertFeedbackStmt.run(agentId, "api-user", rating, commentHash, amountPaid, now, txSignature || null);
+
+      // Update reputation
+      const repStmt = safePreparedStatement(db, "SELECT * FROM reputation WHERE agent_id = ?", [agentId]);
+      const rep = repStmt.get(agentId);
+      if (rep) {
+        const dist = JSON.parse(rep.rating_distribution);
+        dist[rating - 1]++;
+        
+        const updateRepStmt = safePreparedStatement(db, `
+          UPDATE reputation SET
+            total_ratings = total_ratings + 1,
+            rating_sum = rating_sum + ?,
+            total_volume = total_volume + ?,
+            unique_raters = unique_raters + 1,
+            rating_distribution = ?,
+            last_rated_at = ?
+          WHERE agent_id = ?
+        `, [rating, amountPaid, JSON.stringify(dist), now, agentId]);
+        updateRepStmt.run(rating, amountPaid, JSON.stringify(dist), now, agentId);
+      }
+
+      // Update protocol stats
+      const updateStatsStmt = safePreparedStatement(db, 
+        "UPDATE protocol_stats SET total_transactions = total_transactions + 1, total_volume = total_volume + ? WHERE id = 1",
+        [amountPaid]
+      );
+      updateStatsStmt.run(amountPaid);
+    });
+
+    transaction();
+
+    broadcast({ type: "feedback", agentId, rating, amountPaid, timestamp: now });
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Feedback submission error:", error);
+    res.status(500).json({ error: "Database error" });
   }
-
-  const commentHash = comment ? require("crypto").createHash("sha256").update(comment).digest("hex") : null;
-  const now = Math.floor(Date.now() / 1000);
-
-  db.prepare(
-    "INSERT INTO feedback (agent_id, rater, rating, comment_hash, amount_paid, created_at, tx_signature) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).run(agentId, "api-user", rating, commentHash, amountPaid || 0, now, txSignature || null);
-
-  // Update reputation
-  const rep = db.prepare("SELECT * FROM reputation WHERE agent_id = ?").get(agentId);
-  if (rep) {
-    const dist = JSON.parse(rep.rating_distribution);
-    dist[rating - 1]++;
-    db.prepare(`
-      UPDATE reputation SET
-        total_ratings = total_ratings + 1,
-        rating_sum = rating_sum + ?,
-        total_volume = total_volume + ?,
-        unique_raters = unique_raters + 1,
-        rating_distribution = ?,
-        last_rated_at = ?
-      WHERE agent_id = ?
-    `).run(rating, amountPaid || 0, JSON.stringify(dist), now, agentId);
-  }
-
-  // Update protocol stats
-  db.prepare("UPDATE protocol_stats SET total_transactions = total_transactions + 1, total_volume = total_volume + ? WHERE id = 1").run(amountPaid || 0);
-
-  broadcast({ type: "feedback", agentId, rating, amountPaid, timestamp: now });
-  res.json({ success: true });
 });
 
 // POST /agents - register agent via API (stores in DB, for demo)
-app.post("/agents", (req, res) => {
-  const { name, description, agentUri, owner, agentWallet } = req.body;
-  if (!name || !owner) return res.status(400).json({ error: "name and owner required" });
+app.post("/agents", [
+  validateString('name', 64),
+  validateString('description', 256),
+  body('agentUri').optional().isURL().withMessage('Invalid agent URI'),
+  validatePubkey('owner'),
+  validatePubkey('agentWallet').optional(),
+  handleValidationErrors
+], (req, res) => {
+  try {
+    const { name, description = "", agentUri = "", owner, agentWallet } = req.body;
 
-  const stats = db.prepare("SELECT * FROM protocol_stats WHERE id = 1").get();
-  const agentId = stats.total_agents;
-  const now = Math.floor(Date.now() / 1000);
+    // Check for duplicate names
+    const existingStmt = safePreparedStatement(db, "SELECT agent_id FROM agents WHERE name = ? AND active = 1", [name]);
+    const existing = existingStmt.get(name);
+    if (existing) {
+      return res.status(409).json({ error: "Agent name already exists" });
+    }
 
-  db.prepare(
-    "INSERT INTO agents (agent_id, owner, agent_wallet, name, description, agent_uri, active, registered_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)"
-  ).run(agentId, owner, agentWallet || owner, name, description || "", agentUri || "", now, now);
+    const transaction = db.transaction(() => {
+      const statsStmt = safePreparedStatement(db, "SELECT * FROM protocol_stats WHERE id = 1", []);
+      const stats = statsStmt.get();
+      const agentId = stats.total_agents;
+      const now = Math.floor(Date.now() / 1000);
 
-  db.prepare(
-    "INSERT INTO reputation (agent_id) VALUES (?)"
-  ).run(agentId);
+      const insertAgentStmt = safePreparedStatement(db,
+        "INSERT INTO agents (agent_id, owner, agent_wallet, name, description, agent_uri, active, registered_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)",
+        [agentId, owner, agentWallet || owner, name, description, agentUri, now, now]
+      );
+      insertAgentStmt.run(agentId, owner, agentWallet || owner, name, description, agentUri, now, now);
 
-  db.prepare("UPDATE protocol_stats SET total_agents = total_agents + 1 WHERE id = 1").run();
+      const insertRepStmt = safePreparedStatement(db, "INSERT INTO reputation (agent_id) VALUES (?)", [agentId]);
+      insertRepStmt.run(agentId);
 
-  broadcast({ type: "registration", agentId, name, timestamp: now });
-  res.json({ agentId, success: true });
+      const updateStatsStmt = safePreparedStatement(db, "UPDATE protocol_stats SET total_agents = total_agents + 1 WHERE id = 1", []);
+      updateStatsStmt.run();
+
+      return { agentId, name, timestamp: now };
+    });
+
+    const result = transaction();
+    
+    broadcast({ type: "registration", agentId: result.agentId, name: result.name, timestamp: result.timestamp });
+    res.json({ agentId: result.agentId, success: true });
+  } catch (error) {
+    console.error("Agent registration error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // Health

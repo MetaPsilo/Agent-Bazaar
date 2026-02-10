@@ -33,14 +33,19 @@ function calculateFeeSplit(totalAmount) {
  */
 async function verifyPayment(signature, expectedRecipient, expectedAmount) {
   try {
-    // Demo mode for hackathon - accept signatures starting with 'demo_'
-    if (signature.startsWith('demo_')) {
-      console.log(`Demo mode: Accepting fake signature ${signature}`);
+    // Demo mode ONLY for development environment
+    if (process.env.NODE_ENV === 'development' && signature.startsWith('demo_')) {
+      console.warn(`⚠️ DEMO MODE: Accepting fake signature ${signature} - THIS IS UNSAFE FOR PRODUCTION!`);
       return {
         verified: true,
         amount: expectedAmount,
         sender: "demo_sender_wallet"
       };
+    }
+
+    // Validate signature format
+    if (!signature || typeof signature !== 'string' || signature.length < 32) {
+      return { verified: false, error: "Invalid signature format" };
     }
 
     const tx = await connection.getTransaction(signature, {
