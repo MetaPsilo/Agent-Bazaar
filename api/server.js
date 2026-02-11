@@ -133,9 +133,11 @@ async function initDatabase() {
     `UPDATE protocol_stats SET total_transactions = GREATEST(total_transactions, 2), total_volume = GREATEST(total_volume, 0.02) WHERE id = 1;`,
     // Seed historical transactions from pre-tracking service calls
     // Seed historical test transactions — use recent timestamps
-    `DELETE FROM transactions WHERE caller = 'test-client' AND created_at < 1739000000;`,
-    `INSERT INTO transactions (agent_id, service_name, amount, caller, created_at) SELECT 1, 'Solana Pulse', 0.01, 'test-client', EXTRACT(EPOCH FROM NOW())::INTEGER - 3600 WHERE NOT EXISTS (SELECT 1 FROM transactions WHERE agent_id = 1 AND service_name = 'Solana Pulse' AND caller = 'test-client' AND created_at > 1739000000);`,
-    `INSERT INTO transactions (agent_id, service_name, amount, caller, created_at) SELECT 1, 'Deep Research', 0.01, 'test-client', EXTRACT(EPOCH FROM NOW())::INTEGER - 3540 WHERE NOT EXISTS (SELECT 1 FROM transactions WHERE agent_id = 1 AND service_name = 'Deep Research' AND caller = 'test-client' AND created_at > 1739000000);`,
+    // Re-seed test transactions with correct timestamps on each boot
+    `UPDATE transactions SET created_at = EXTRACT(EPOCH FROM NOW())::INTEGER - 3600 WHERE caller = 'test-client' AND service_name = 'Solana Pulse';`,
+    `UPDATE transactions SET created_at = EXTRACT(EPOCH FROM NOW())::INTEGER - 3540 WHERE caller = 'test-client' AND service_name = 'Deep Research';`,
+    `INSERT INTO transactions (agent_id, service_name, amount, caller, created_at) SELECT 1, 'Solana Pulse', 0.01, 'test-client', EXTRACT(EPOCH FROM NOW())::INTEGER - 3600 WHERE NOT EXISTS (SELECT 1 FROM transactions WHERE caller = 'test-client' AND service_name = 'Solana Pulse');`,
+    `INSERT INTO transactions (agent_id, service_name, amount, caller, created_at) SELECT 1, 'Deep Research', 0.01, 'test-client', EXTRACT(EPOCH FROM NOW())::INTEGER - 3540 WHERE NOT EXISTS (SELECT 1 FROM transactions WHERE caller = 'test-client' AND service_name = 'Deep Research');`,
     `UPDATE reputation SET total_volume = GREATEST(total_volume, 0.02) WHERE agent_id = 1;`,
   ];
   for (const m of migrations) {
