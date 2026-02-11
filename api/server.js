@@ -4,10 +4,11 @@ const cors = require("cors");
 const crypto = require("crypto");
 const http = require("http");
 const { WebSocketServer } = require("ws");
-const Database = require("better-sqlite3");
+const { Pool } = require("pg");
 const path = require("path");
 const { x402Protect, handlePaymentSubmission, calculateFeeSplit } = require("./x402-facilitator");
 const { createJob, getJob, updateJobProgress, completeJob, failJob, getJobStatus, STATUS } = require("./job-queue");
+const { initPaymentCache } = require("./payment-cache");
 
 const {
   generalRateLimit,
@@ -24,11 +25,21 @@ const {
   validateMinRating,
   handleValidationErrors,
   corsConfig,
-  safePreparedStatement,
   securityHeaders,
 } = require("./security-middleware");
 
 const { query, body } = require("express-validator");
+
+// PostgreSQL setup — require DATABASE_URL (Railway provides this)
+if (!process.env.DATABASE_URL) {
+  console.error("❌ DATABASE_URL environment variable is required. Add a PostgreSQL addon in Railway.");
+  process.exit(1);
+}
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false },
+});
 
 const app = express();
 
@@ -40,8 +51,6 @@ app.use(express.json({
   limit: '1mb',
   verify: (req, res, buf) => {
     const str = buf.toString();
-    // Check for all known prototype pollution vectors
-    // Fixed operator precedence: use explicit parentheses
     if (str.includes('__proto__') || 
         (str.includes('constructor') && str.includes('prototype')) ||
         str.includes('__defineGetter__') ||
@@ -52,104 +61,89 @@ app.use(express.json({
 }));
 app.use(generalRateLimit);
 
-// SQLite setup — use DATA_DIR for persistent volume (Railway), fallback to local
-const fs = require('fs');
-const dataDir = process.env.DATA_DIR || __dirname;
-if (dataDir !== __dirname && !fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
-const dbPath = path.join(dataDir, "bazaar.db");
+// Initialize database schema
+async function initDatabase() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS agents (
+      agent_id SERIAL PRIMARY KEY,
+      owner TEXT NOT NULL,
+      agent_wallet TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      agent_uri TEXT,
+      callback_url TEXT,
+      callback_secret TEXT,
+      services_json TEXT DEFAULT '[]',
+      active INTEGER DEFAULT 1,
+      registered_at INTEGER,
+      updated_at INTEGER
+    );
 
-// SECURITY: Ensure DB file has restrictive permissions
-if (fs.existsSync(dbPath)) {
-  const stats = fs.statSync(dbPath);
-  const mode = (stats.mode & 0o777).toString(8);
-  if (mode !== '600') {
-    console.warn(`⚠️  DB file has permissive permissions (${mode}). Setting to 600.`);
-    fs.chmodSync(dbPath, 0o600);
+    CREATE TABLE IF NOT EXISTS reputation (
+      agent_id INTEGER PRIMARY KEY,
+      total_ratings INTEGER DEFAULT 0,
+      rating_sum INTEGER DEFAULT 0,
+      total_volume INTEGER DEFAULT 0,
+      unique_raters INTEGER DEFAULT 0,
+      rating_distribution TEXT DEFAULT '[0,0,0,0,0]',
+      last_rated_at INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS feedback (
+      id SERIAL PRIMARY KEY,
+      agent_id INTEGER NOT NULL,
+      rater TEXT NOT NULL,
+      rating INTEGER NOT NULL,
+      comment_hash TEXT,
+      amount_paid INTEGER DEFAULT 0,
+      created_at INTEGER,
+      tx_signature TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS protocol_stats (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      total_agents INTEGER DEFAULT 0,
+      total_transactions INTEGER DEFAULT 0,
+      total_volume INTEGER DEFAULT 0,
+      platform_fee_bps INTEGER DEFAULT 250
+    );
+
+    INSERT INTO protocol_stats (id) VALUES (1) ON CONFLICT DO NOTHING;
+  `);
+
+  // Migrations — add columns if they don't exist
+  const migrations = [
+    `DO $$ BEGIN ALTER TABLE agents ADD COLUMN services_json TEXT DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;`,
+    `DO $$ BEGIN ALTER TABLE agents ADD COLUMN callback_url TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;`,
+    `DO $$ BEGIN ALTER TABLE agents ADD COLUMN callback_secret TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;`,
+  ];
+  for (const m of migrations) {
+    await pool.query(m);
   }
+
+  // Initialize payment cache
+  await initPaymentCache(pool);
 }
-
-const db = new Database(dbPath);
-// SECURITY: Enable WAL mode for better concurrent read performance + crash recovery
-db.pragma('journal_mode = WAL');
-// SECURITY: Enable foreign keys
-db.pragma('foreign_keys = ON');
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS agents (
-    agent_id INTEGER PRIMARY KEY,
-    owner TEXT NOT NULL,
-    agent_wallet TEXT NOT NULL,
-    name TEXT NOT NULL,
-    description TEXT,
-    agent_uri TEXT,
-    callback_url TEXT,
-    callback_secret TEXT,
-    services_json TEXT DEFAULT '[]',
-    active INTEGER DEFAULT 1,
-    registered_at INTEGER,
-    updated_at INTEGER
-  );
-
-  CREATE TABLE IF NOT EXISTS reputation (
-    agent_id INTEGER PRIMARY KEY,
-    total_ratings INTEGER DEFAULT 0,
-    rating_sum INTEGER DEFAULT 0,
-    total_volume INTEGER DEFAULT 0,
-    unique_raters INTEGER DEFAULT 0,
-    rating_distribution TEXT DEFAULT '[0,0,0,0,0]',
-    last_rated_at INTEGER DEFAULT 0
-  );
-
-  CREATE TABLE IF NOT EXISTS feedback (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    agent_id INTEGER NOT NULL,
-    rater TEXT NOT NULL,
-    rating INTEGER NOT NULL,
-    comment_hash TEXT,
-    amount_paid INTEGER DEFAULT 0,
-    created_at INTEGER,
-    tx_signature TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS protocol_stats (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    total_agents INTEGER DEFAULT 0,
-    total_transactions INTEGER DEFAULT 0,
-    total_volume INTEGER DEFAULT 0,
-    platform_fee_bps INTEGER DEFAULT 250
-  );
-
-  INSERT OR IGNORE INTO protocol_stats (id) VALUES (1);
-`);
-
-// Migrations
-try { db.exec(`ALTER TABLE agents ADD COLUMN services_json TEXT DEFAULT '[]'`); } catch {}
-try { db.exec(`ALTER TABLE agents ADD COLUMN callback_url TEXT`); } catch {}
-try { db.exec(`ALTER TABLE agents ADD COLUMN callback_secret TEXT`); } catch {}
 
 // WebSocket setup with security
 const server = http.createServer(app);
 const wss = new WebSocketServer({ 
   server, 
   path: "/ws",
-  maxPayload: 16 * 1024, // 16KB max message size
-  perMessageDeflate: false, // Disable compression to prevent attacks
+  maxPayload: 16 * 1024,
+  perMessageDeflate: false,
 });
 
-const wsClients = new Map(); // Use Map to track connection metadata
-const MAX_CONNECTIONS = 1000; // Prevent resource exhaustion
+const wsClients = new Map();
+const MAX_CONNECTIONS = 1000;
 
 wss.on("connection", (ws, req) => {
-  // Rate limit connections per IP
-  // SECURITY: Only trust x-forwarded-for behind a reverse proxy (TRUST_PROXY env var)
   const clientIP = process.env.TRUST_PROXY === 'true' 
     ? (req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.connection.remoteAddress)
     : req.connection.remoteAddress;
   const connectionsFromIP = Array.from(wsClients.values()).filter(meta => meta.ip === clientIP).length;
   
-  if (connectionsFromIP > 10) { // Max 10 connections per IP
+  if (connectionsFromIP > 10) {
     ws.close(1008, "Too many connections from this IP");
     return;
   }
@@ -164,8 +158,6 @@ wss.on("connection", (ws, req) => {
   ws.on("close", () => wsClients.delete(ws));
   
   ws.on("message", (data) => {
-    // Ignore client messages to prevent abuse
-    // This is a broadcast-only WebSocket
     console.log("Ignoring client message on broadcast-only WebSocket");
   });
 
@@ -180,7 +172,6 @@ wss.on("connection", (ws, req) => {
   });
 });
 
-// Ping/pong to detect dead connections
 const wsHeartbeat = setInterval(() => {
   for (const [ws, meta] of wsClients) {
     if (meta.alive === false) {
@@ -201,7 +192,7 @@ function broadcast(event) {
     const deadClients = [];
     
     for (const [client, metadata] of wsClients) {
-      if (client.readyState === 1) { // WebSocket.OPEN
+      if (client.readyState === 1) {
         try {
           client.send(data);
         } catch (error) {
@@ -213,7 +204,6 @@ function broadcast(event) {
       }
     }
     
-    // Clean up dead connections
     deadClients.forEach(client => wsClients.delete(client));
   } catch (error) {
     console.error("Broadcast error:", error);
@@ -232,7 +222,6 @@ app.post("/x402/pay", paymentRateLimit, handlePaymentSubmission);
 const OPENCLAW_GATEWAY = process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789";
 const OPENCLAW_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 
-// Helper: call an agent's callback URL to fulfill a service request
 async function callAgentCallback(callbackUrl, agent, service, prompt, timeoutSeconds = 60) {
   try {
     const controller = new AbortController();
@@ -248,7 +237,6 @@ async function callAgentCallback(callbackUrl, agent, service, prompt, timeoutSec
       timestamp,
     });
     
-    // Sign the request with the agent's callback secret
     const signature = agent.callback_secret
       ? crypto.createHmac("sha256", agent.callback_secret).update(`${timestamp}.${body}`).digest("hex")
       : "";
@@ -285,7 +273,6 @@ async function callAgentCallback(callbackUrl, agent, service, prompt, timeoutSec
   }
 }
 
-// Helper: fallback — call OpenClaw gateway for agents without a callback URL
 async function callAgentViaGateway(agentName, serviceName, prompt, timeoutSeconds = 120) {
   if (!OPENCLAW_TOKEN) {
     return { error: "No callback URL and no gateway configured", fallback: true };
@@ -330,7 +317,6 @@ async function callAgentViaGateway(agentName, serviceName, prompt, timeoutSecond
   }
 }
 
-// Call the agent's callback URL
 async function callAgent(agent, service, prompt) {
   if (!agent.callback_url) {
     return { error: "Agent has no callback URL configured", fallback: true };
@@ -338,29 +324,24 @@ async function callAgent(agent, service, prompt) {
   return callAgentCallback(agent.callback_url, agent, service, prompt);
 }
 
-// GET /services/agent/:agentId/:serviceIndex — Generic agent service endpoint
-// Looks up agent + service from DB, calls AI to fulfill
+// GET /services/agent/:agentId/:serviceIndex
 app.get("/services/agent/:agentId/:serviceIndex", async (req, res) => {
   try {
     const { agentId, serviceIndex } = req.params;
     const { prompt } = req.query;
     
-    // Look up agent
-    const agentStmt = safePreparedStatement(db, "SELECT * FROM agents WHERE agent_id = ? AND active = 1", [agentId]);
-    const agent = agentStmt.get(Number(agentId));
+    const { rows } = await pool.query("SELECT * FROM agents WHERE agent_id = $1 AND active = 1", [Number(agentId)]);
+    const agent = rows[0];
     if (!agent) return res.status(404).json({ error: "Agent not found" });
     
-    // Parse services
     let services = [];
     try { services = JSON.parse(agent.services_json || "[]"); } catch {}
     const service = services[Number(serviceIndex)];
     if (!service) return res.status(404).json({ error: "Service not found" });
     
-    // Calculate price in USDC subunits (6 decimals)
     const priceUsdc = parseFloat(service.price) || 0.01;
     const priceSubunits = String(Math.round(priceUsdc * 1000000));
     
-    // Check x402 payment
     const paymentHeader = req.headers["authorization"] || req.headers["x-payment"];
     if (!paymentHeader || !paymentHeader.startsWith("x402 ")) {
       return res.status(402).json({
@@ -378,7 +359,6 @@ app.get("/services/agent/:agentId/:serviceIndex", async (req, res) => {
       });
     }
     
-    // Payment provided — call the agent
     const result = await callAgent(
       agent,
       service,
@@ -416,7 +396,7 @@ app.post("/test-callback", generalRateLimit, async (req, res) => {
   if (!callbackUrl) return res.status(400).json({ error: "Missing callbackUrl" });
   
   try {
-    new URL(callbackUrl); // Validate URL format
+    new URL(callbackUrl);
   } catch {
     return res.json({ success: false, error: "Invalid URL format" });
   }
@@ -451,7 +431,7 @@ app.post("/test-callback", generalRateLimit, async (req, res) => {
   }
 });
 
-// Legacy hardcoded endpoints (redirect to agent service system)
+// Legacy hardcoded endpoints
 app.get("/services/research/pulse", (req, res) => {
   req.params = { agentId: "0", serviceIndex: "0" };
   req.query.prompt = req.query.prompt || "Generate a daily alpha briefing on the Solana ecosystem";
@@ -473,8 +453,6 @@ app.get("/services/text-summary", (req, res) => {
 // ASYNC JOB SYSTEM
 // ============================================================
 
-// POST /jobs - Submit an async job (requires x402 payment)
-// Client sends input data + payment proof, gets back a job ID to poll
 app.post("/jobs", paymentRateLimit, (req, res) => {
   try {
     const { serviceId, agentId, input, paymentProof } = req.body;
@@ -483,14 +461,11 @@ app.post("/jobs", paymentRateLimit, (req, res) => {
       return res.status(400).json({ error: "Missing serviceId" });
     }
 
-    // For demo: create job without payment verification
-    // In production: verify paymentProof first via x402
     const job = createJob(serviceId, agentId || 'demo', input || {}, {
       signature: paymentProof?.signature || `demo_${Date.now()}`,
       amount: paymentProof?.amount || 0,
     });
 
-    // Simulate async processing for demo services
     simulateJobProcessing(job);
 
     broadcast({ type: 'job_created', serviceId, timestamp: Date.now() });
@@ -508,7 +483,6 @@ app.post("/jobs", paymentRateLimit, (req, res) => {
   }
 });
 
-// GET /jobs/:id/status - Poll job status (free, no auth required)
 app.get("/jobs/:id/status", (req, res) => {
   const job = getJob(req.params.id);
   if (!job) {
@@ -517,14 +491,12 @@ app.get("/jobs/:id/status", (req, res) => {
   res.json(getJobStatus(job));
 });
 
-// GET /jobs/:id/result - Fetch job result (requires original access token)
 app.get("/jobs/:id/result", (req, res) => {
   const job = getJob(req.params.id);
   if (!job) {
     return res.status(404).json({ error: "Job not found" });
   }
 
-  // SECURITY: Verify access token to prevent unauthorized result access
   const authHeader = req.headers['authorization'];
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: "Authorization required. Include Bearer <accessToken> header." });
@@ -543,14 +515,12 @@ app.get("/jobs/:id/result", (req, res) => {
     });
   }
 
-  // Return binary result (file download)
   if (job.resultBuffer) {
     res.setHeader('Content-Type', job.resultContentType);
     res.setHeader('Content-Disposition', `attachment; filename="${job.resultFilename}"`);
     return res.send(job.resultBuffer);
   }
 
-  // Return JSON result
   res.json({
     jobId: job.id,
     serviceId: job.serviceId,
@@ -560,7 +530,6 @@ app.get("/jobs/:id/result", (req, res) => {
   });
 });
 
-// POST /jobs/:id/webhook - Register a webhook for job completion
 app.post("/jobs/:id/webhook", (req, res) => {
   const job = getJob(req.params.id);
   if (!job) {
@@ -570,33 +539,25 @@ app.post("/jobs/:id/webhook", (req, res) => {
   if (!url) {
     return res.status(400).json({ error: "Missing webhook url" });
   }
-  // URL validation with comprehensive SSRF protection
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'https:') {
       return res.status(400).json({ error: "Webhook URL must use HTTPS" });
     }
-    // Reject URLs with auth info (user:pass@host)
     if (parsed.username || parsed.password) {
       return res.status(400).json({ error: "Webhook URL cannot contain credentials" });
     }
-    // Block private/internal IPs (comprehensive)
     const hostname = parsed.hostname.toLowerCase();
-    // Block localhost variants
     if (hostname === 'localhost' || hostname === '0.0.0.0' || hostname === '127.0.0.1' ||
         hostname === '[::1]' || hostname === '[0:0:0:0:0:0:0:1]' ||
         hostname.endsWith('.localhost') || hostname === '0177.0.0.1' ||
         hostname === '0x7f000001' || hostname === '0x7f.0.0.1' ||
-        // Block private ranges
         hostname.startsWith('10.') || hostname.startsWith('192.168.') ||
         hostname.startsWith('169.254.') ||
         /^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname) ||
-        // Block IPv6 mapped IPv4
         hostname.includes('::ffff:') ||
-        // Block cloud metadata endpoints
         hostname === 'metadata.google.internal' ||
         hostname === 'metadata.internal' ||
-        // Block any IP address (only allow domain names)
         /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
         /^\[/.test(hostname)) {
       return res.status(400).json({ error: "Webhook URL cannot target private/internal networks or IP addresses" });
@@ -605,7 +566,6 @@ app.post("/jobs/:id/webhook", (req, res) => {
     return res.status(400).json({ error: "Invalid webhook URL" });
   }
   
-  // SECURITY: Require access token to register webhooks (prevent unauthorized registration)
   const webhookAuth = req.headers['authorization'];
   if (!webhookAuth || !webhookAuth.startsWith('Bearer ')) {
     return res.status(401).json({ error: "Authorization required to register webhooks" });
@@ -618,14 +578,9 @@ app.post("/jobs/:id/webhook", (req, res) => {
   res.json({ success: true, message: "Webhook registered" });
 });
 
-/**
- * Simulate async job processing for demo services.
- * In production, this would dispatch to the actual agent's processing pipeline.
- */
 function simulateJobProcessing(job) {
   const { serviceId, input } = job;
 
-  // Start processing after a short delay
   setTimeout(() => {
     updateJobProgress(job.id, 10, 'Processing started');
     broadcast({ type: 'job_progress', progress: 10 });
@@ -633,7 +588,6 @@ function simulateJobProcessing(job) {
 
   switch (serviceId) {
     case 'document-generation': {
-      // Simulate PDF-like document generation
       const text = input?.text || input?.content || 'No content provided';
       const title = input?.title || 'Generated Document';
       const format = input?.format || 'markdown';
@@ -642,7 +596,6 @@ function simulateJobProcessing(job) {
       setTimeout(() => updateJobProgress(job.id, 60, 'Generating document'), 2500);
       setTimeout(() => updateJobProgress(job.id, 80, 'Formatting output'), 4000);
       setTimeout(() => {
-        // Generate a markdown document (in production: actual PDF via puppeteer/etc)
         const doc = `# ${title}\n\n*Generated by Agent Bazaar*\n*${new Date().toISOString()}*\n\n---\n\n${text}\n\n---\n\n*This document was generated by an AI agent on the Agent Bazaar marketplace.*`;
         
         completeJob(job.id, Buffer.from(doc, 'utf-8'), {
@@ -655,7 +608,6 @@ function simulateJobProcessing(job) {
     }
 
     case 'deep-research': {
-      // Simulate a longer research task
       const topic = input?.topic || input?.query || 'general analysis';
 
       setTimeout(() => updateJobProgress(job.id, 15, 'Gathering sources'), 2000);
@@ -685,7 +637,6 @@ function simulateJobProcessing(job) {
     }
 
     case 'code-audit': {
-      // Simulate code analysis
       const code = input?.code || input?.repositoryUrl || 'No code provided';
 
       setTimeout(() => updateJobProgress(job.id, 20, 'Parsing code'), 1000);
@@ -708,7 +659,6 @@ function simulateJobProcessing(job) {
     }
 
     default: {
-      // Generic async task
       setTimeout(() => updateJobProgress(job.id, 50, 'Processing'), 2000);
       setTimeout(() => {
         completeJob(job.id, {
@@ -734,7 +684,7 @@ app.get("/agents", [
   validateMinRating,
   query('sort').optional().isIn(['rating', 'transactions', 'volume', 'newest']).withMessage('Invalid sort parameter'),
   handleValidationErrors
-], (req, res) => {
+], async (req, res) => {
   try {
     const { category, minRating, sort = "rating", limit = 20, offset = 0, q } = req.query;
     
@@ -746,14 +696,17 @@ app.get("/agents", [
       WHERE a.active = 1
     `;
     const params = [];
+    let paramIndex = 1;
 
     if (q) {
-      queryStr += ` AND (a.name LIKE ? OR a.description LIKE ?)`;
+      queryStr += ` AND (a.name LIKE $${paramIndex} OR a.description LIKE $${paramIndex + 1})`;
       params.push(`%${q}%`, `%${q}%`);
+      paramIndex += 2;
     }
     if (minRating) {
-      queryStr += ` AND (CASE WHEN r.total_ratings > 0 THEN CAST(r.rating_sum AS REAL) / r.total_ratings ELSE 0 END) >= ?`;
+      queryStr += ` AND (CASE WHEN r.total_ratings > 0 THEN CAST(r.rating_sum AS REAL) / r.total_ratings ELSE 0 END) >= $${paramIndex}`;
       params.push(Number(minRating));
+      paramIndex++;
     }
 
     const sortMap = {
@@ -763,19 +716,19 @@ app.get("/agents", [
       newest: "a.registered_at DESC",
     };
     queryStr += ` ORDER BY ${sortMap[sort]}`;
-    queryStr += ` LIMIT ? OFFSET ?`;
+    queryStr += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(Number(limit), Number(offset));
 
-    const agentStmt = safePreparedStatement(db, queryStr, params);
-    const agents = agentStmt.all(...params).map(a => {
+    const { rows: agents } = await pool.query(queryStr, params);
+    const mapped = agents.map(a => {
       const { callback_secret, services_json, ...safe } = a;
       return { ...safe, services: (() => { try { return JSON.parse(services_json || '[]'); } catch { return []; } })() };
     });
     
-    const countStmt = safePreparedStatement(db, "SELECT COUNT(*) as c FROM agents WHERE active = 1", []);
-    const total = countStmt.get().c;
+    const { rows: countRows } = await pool.query("SELECT COUNT(*) as c FROM agents WHERE active = 1");
+    const total = parseInt(countRows[0].c);
 
-    res.json({ agents, total, offset: Number(offset), limit: Number(limit) });
+    res.json({ agents: mapped, total, offset: Number(offset), limit: Number(limit) });
   } catch (error) {
     console.error("Agents query error:", error);
     res.status(500).json({ error: "Database error" });
@@ -786,17 +739,17 @@ app.get("/agents", [
 app.get("/agents/:id", [
   validateAgentId,
   handleValidationErrors
-], (req, res) => {
+], async (req, res) => {
   try {
-    const stmt = safePreparedStatement(db, `
+    const { rows } = await pool.query(`
       SELECT a.*, r.total_ratings, r.rating_sum, r.total_volume, r.unique_raters, r.rating_distribution,
              CASE WHEN r.total_ratings > 0 THEN CAST(r.rating_sum AS REAL) / r.total_ratings ELSE 0 END as avg_rating
       FROM agents a
       LEFT JOIN reputation r ON a.agent_id = r.agent_id
-      WHERE a.agent_id = ?
+      WHERE a.agent_id = $1
     `, [req.params.id]);
     
-    const raw = stmt.get(req.params.id);
+    const raw = rows[0];
     if (!raw) return res.status(404).json({ error: "Agent not found" });
     const { callback_secret, services_json, ...agent } = raw;
     agent.services = (() => { try { return JSON.parse(services_json || '[]'); } catch { return []; } })();
@@ -812,17 +765,16 @@ app.get("/agents/:id/feedback", [
   validateAgentId,
   validatePaginationQuery,
   handleValidationErrors
-], (req, res) => {
+], async (req, res) => {
   try {
     const { limit = 20, offset = 0 } = req.query;
     
-    const feedbackStmt = safePreparedStatement(db,
-      "SELECT * FROM feedback WHERE agent_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
-      [req.params.id, limit, offset]
+    const { rows } = await pool.query(
+      "SELECT * FROM feedback WHERE agent_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+      [req.params.id, Number(limit), Number(offset)]
     );
-    const feedbacks = feedbackStmt.all(req.params.id, Number(limit), Number(offset));
     
-    res.json(feedbacks);
+    res.json(rows);
   } catch (error) {
     console.error("Feedback fetch error:", error);
     res.status(500).json({ error: "Database error" });
@@ -830,13 +782,13 @@ app.get("/agents/:id/feedback", [
 });
 
 // GET /stats
-app.get("/stats", (req, res) => {
+app.get("/stats", async (req, res) => {
   try {
-    const statsStmt = safePreparedStatement(db, "SELECT * FROM protocol_stats WHERE id = 1", []);
-    const stats = statsStmt.get();
+    const { rows: statsRows } = await pool.query("SELECT * FROM protocol_stats WHERE id = 1");
+    const stats = statsRows[0];
     
-    const activeAgentsStmt = safePreparedStatement(db, "SELECT COUNT(*) as c FROM agents WHERE active = 1", []);
-    const activeAgents = activeAgentsStmt.get().c;
+    const { rows: countRows } = await pool.query("SELECT COUNT(*) as c FROM agents WHERE active = 1");
+    const activeAgents = parseInt(countRows[0].c);
     
     res.json({ ...stats, activeAgents });
   } catch (error) {
@@ -850,7 +802,7 @@ app.get("/leaderboard", [
   query('metric').optional().isIn(['rating', 'transactions', 'volume']).withMessage('Invalid metric'),
   query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100').toInt(),
   handleValidationErrors
-], (req, res) => {
+], async (req, res) => {
   try {
     const { metric = "rating", limit = 20 } = req.query;
     const sortMap = {
@@ -866,11 +818,11 @@ app.get("/leaderboard", [
       LEFT JOIN reputation r ON a.agent_id = r.agent_id
       WHERE a.active = 1
       ORDER BY ${sortMap[metric]}
-      LIMIT ?
+      LIMIT $1
     `;
     
-    const agentsStmt = safePreparedStatement(db, queryStr, [limit]);
-    const agents = agentsStmt.all(Number(limit)).map(a => {
+    const { rows } = await pool.query(queryStr, [Number(limit)]);
+    const agents = rows.map(a => {
       const { callback_secret, services_json, ...safe } = a;
       return { ...safe, services: (() => { try { return JSON.parse(services_json || '[]'); } catch { return []; } })() };
     });
@@ -882,7 +834,7 @@ app.get("/leaderboard", [
   }
 });
 
-// POST /feedback - submit feedback (simplified, stores in DB)
+// POST /feedback
 app.post("/feedback", [
   feedbackRateLimit,
   body('agentId').isInt({ min: 0 }).withMessage('Invalid agent ID').toInt(),
@@ -896,13 +848,12 @@ app.post("/feedback", [
   body('authSignature').isLength({ min: 32, max: 256 }).withMessage('Wallet signature required for authentication'),
   body('authMessage').isLength({ min: 10, max: 256 }).withMessage('Signed message required'),
   handleValidationErrors
-], (req, res) => {
+], async (req, res) => {
   try {
     const { agentId, rating, comment, txSignature, amountPaid = 0 } = req.body;
 
-    // Check if agent exists and is active
-    const agentStmt = safePreparedStatement(db, "SELECT active, owner FROM agents WHERE agent_id = ?", [agentId]);
-    const agent = agentStmt.get(agentId);
+    const { rows: agentRows } = await pool.query("SELECT active, owner FROM agents WHERE agent_id = $1", [agentId]);
+    const agent = agentRows[0];
     if (!agent) {
       return res.status(404).json({ error: "Agent not found" });
     }
@@ -930,11 +881,9 @@ app.post("/feedback", [
       if (!isValid) {
         return res.status(403).json({ error: "Invalid wallet signature" });
       }
-      // Verify message contains the correct agent ID
       if (!feedbackAuthMsg.includes(`feedback:${agentId}:`)) {
         return res.status(403).json({ error: "Signature message must contain the agent ID" });
       }
-      // Verify timestamp is recent (within 5 minutes)
       const msgParts = feedbackAuthMsg.split(':');
       const msgTimestamp = parseInt(msgParts[2]);
       const nowSec = Math.floor(Date.now() / 1000);
@@ -945,61 +894,64 @@ app.post("/feedback", [
       return res.status(403).json({ error: "Signature verification failed: " + sigError.message });
     }
 
-    // SECURITY: Prevent self-rating (now verified via cryptographic proof)
+    // SECURITY: Prevent self-rating
     if (raterAddress === agent.owner) {
       return res.status(403).json({ error: "Cannot rate your own agent" });
     }
 
-    // Note: amount_paid is self-reported. In production, verify against actual on-chain SPL transfer.
     const sanitizedAmount = Math.max(0, amountPaid || 0);
-
     const commentHash = comment ? require("crypto").createHash("sha256").update(comment).digest("hex") : null;
     const now = Math.floor(Date.now() / 1000);
 
     // Use transaction for atomicity
-    const transaction = db.transaction(() => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
       // Insert feedback
-      const insertFeedbackStmt = safePreparedStatement(db,
-        "INSERT INTO feedback (agent_id, rater, rating, comment_hash, amount_paid, created_at, tx_signature) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      await client.query(
+        "INSERT INTO feedback (agent_id, rater, rating, comment_hash, amount_paid, created_at, tx_signature) VALUES ($1, $2, $3, $4, $5, $6, $7)",
         [agentId, raterAddress || "api-user", rating, commentHash, sanitizedAmount, now, txSignature || null]
       );
-      insertFeedbackStmt.run(agentId, raterAddress || "api-user", rating, commentHash, sanitizedAmount, now, txSignature || null);
 
       // Update reputation
-      const repStmt = safePreparedStatement(db, "SELECT * FROM reputation WHERE agent_id = ?", [agentId]);
-      const rep = repStmt.get(agentId);
+      const { rows: repRows } = await client.query("SELECT * FROM reputation WHERE agent_id = $1", [agentId]);
+      const rep = repRows[0];
       if (rep) {
         let dist;
         try {
           dist = JSON.parse(rep.rating_distribution);
           if (!Array.isArray(dist) || dist.length !== 5) throw new Error('invalid');
         } catch {
-          dist = [0, 0, 0, 0, 0]; // Reset if corrupted
+          dist = [0, 0, 0, 0, 0];
         }
         dist[rating - 1]++;
         
-        const updateRepStmt = safePreparedStatement(db, `
+        await client.query(`
           UPDATE reputation SET
             total_ratings = total_ratings + 1,
-            rating_sum = rating_sum + ?,
-            total_volume = total_volume + ?,
+            rating_sum = rating_sum + $1,
+            total_volume = total_volume + $2,
             unique_raters = unique_raters + 1,
-            rating_distribution = ?,
-            last_rated_at = ?
-          WHERE agent_id = ?
-        `, [rating, amountPaid, JSON.stringify(dist), now, agentId]);
-        updateRepStmt.run(rating, sanitizedAmount, JSON.stringify(dist), now, agentId);
+            rating_distribution = $3,
+            last_rated_at = $4
+          WHERE agent_id = $5
+        `, [rating, sanitizedAmount, JSON.stringify(dist), now, agentId]);
       }
 
       // Update protocol stats
-      const updateStatsStmt = safePreparedStatement(db, 
-        "UPDATE protocol_stats SET total_transactions = total_transactions + 1, total_volume = total_volume + ? WHERE id = 1",
-        [amountPaid]
+      await client.query(
+        "UPDATE protocol_stats SET total_transactions = total_transactions + 1, total_volume = total_volume + $1 WHERE id = 1",
+        [sanitizedAmount]
       );
-      updateStatsStmt.run(sanitizedAmount);
-    });
 
-    transaction();
+      await client.query('COMMIT');
+    } catch (txError) {
+      await client.query('ROLLBACK');
+      throw txError;
+    } finally {
+      client.release();
+    }
 
     broadcast({ type: "feedback", agentId, rating, amountPaid: sanitizedAmount, timestamp: now });
     res.json({ success: true });
@@ -1009,7 +961,7 @@ app.post("/feedback", [
   }
 });
 
-// POST /agents - register agent via API (stores in DB, for demo)
+// POST /agents - register agent
 app.post("/agents", registrationRateLimit, [
   validateString('name', 64),
   validateString('description', 512),
@@ -1019,14 +971,12 @@ app.post("/agents", registrationRateLimit, [
   validatePubkey('owner'),
   validatePubkey('agentWallet').optional(),
   handleValidationErrors
-], (req, res) => {
+], async (req, res) => {
   try {
     const { name, description = "", agentUri = "", callbackUrl = "", owner, agentWallet, services = [] } = req.body;
     
-    // Generate callback secret for webhook signature verification
     const callbackSecret = crypto.randomBytes(32).toString("hex");
     
-    // Sanitize services array
     const sanitizedServices = services.slice(0, 20).map(s => ({
       name: String(s.name || '').slice(0, 64),
       description: String(s.description || '').slice(0, 256),
@@ -1035,34 +985,39 @@ app.post("/agents", registrationRateLimit, [
     const servicesJson = JSON.stringify(sanitizedServices);
 
     // Check for duplicate names
-    const existingStmt = safePreparedStatement(db, "SELECT agent_id FROM agents WHERE name = ? AND active = 1", [name]);
-    const existing = existingStmt.get(name);
-    if (existing) {
+    const { rows: existingRows } = await pool.query("SELECT agent_id FROM agents WHERE name = $1 AND active = 1", [name]);
+    if (existingRows.length > 0) {
       return res.status(409).json({ error: "Agent name already exists" });
     }
 
-    const transaction = db.transaction(() => {
-      const statsStmt = safePreparedStatement(db, "SELECT * FROM protocol_stats WHERE id = 1", []);
-      const stats = statsStmt.get();
+    // Use transaction for atomicity
+    const client = await pool.connect();
+    let result;
+    try {
+      await client.query('BEGIN');
+
+      const { rows: statsRows } = await client.query("SELECT * FROM protocol_stats WHERE id = 1");
+      const stats = statsRows[0];
       const agentId = stats.total_agents;
       const now = Math.floor(Date.now() / 1000);
 
-      const insertAgentStmt = safePreparedStatement(db,
-        "INSERT INTO agents (agent_id, owner, agent_wallet, name, description, agent_uri, callback_url, callback_secret, services_json, active, registered_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+      await client.query(
+        "INSERT INTO agents (agent_id, owner, agent_wallet, name, description, agent_uri, callback_url, callback_secret, services_json, active, registered_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, $10, $11)",
         [agentId, owner, agentWallet || owner, name, description, agentUri, callbackUrl, callbackSecret, servicesJson, now, now]
       );
-      insertAgentStmt.run(agentId, owner, agentWallet || owner, name, description, agentUri, callbackUrl, callbackSecret, servicesJson, now, now);
 
-      const insertRepStmt = safePreparedStatement(db, "INSERT INTO reputation (agent_id) VALUES (?)", [agentId]);
-      insertRepStmt.run(agentId);
+      await client.query("INSERT INTO reputation (agent_id) VALUES ($1)", [agentId]);
 
-      const updateStatsStmt = safePreparedStatement(db, "UPDATE protocol_stats SET total_agents = total_agents + 1 WHERE id = 1", []);
-      updateStatsStmt.run();
+      await client.query("UPDATE protocol_stats SET total_agents = total_agents + 1 WHERE id = 1");
 
-      return { agentId, name, timestamp: now };
-    });
-
-    const result = transaction();
+      await client.query('COMMIT');
+      result = { agentId, name, timestamp: now };
+    } catch (txError) {
+      await client.query('ROLLBACK');
+      throw txError;
+    } finally {
+      client.release();
+    }
     
     broadcast({ type: "registration", agentId: result.agentId, name: result.name, timestamp: result.timestamp });
     res.json({ 
@@ -1085,14 +1040,13 @@ app.put("/agents/:id", [
   body('agentUri').optional().isURL().withMessage('Invalid agent URI'),
   body('active').optional().isBoolean().withMessage('Active must be boolean'),
   handleValidationErrors
-], (req, res) => {
+], async (req, res) => {
   try {
     const agentId = req.params.id;
     const { name, description, agentUri, active } = req.body;
 
-    // Check if agent exists
-    const existingStmt = safePreparedStatement(db, "SELECT * FROM agents WHERE agent_id = ?", [agentId]);
-    const existing = existingStmt.get(agentId);
+    const { rows: existingRows } = await pool.query("SELECT * FROM agents WHERE agent_id = $1", [agentId]);
+    const existing = existingRows[0];
     if (!existing) {
       return res.status(404).json({ error: "Agent not found" });
     }
@@ -1103,7 +1057,6 @@ app.put("/agents/:id", [
       return res.status(403).json({ error: "Unauthorized: only the agent owner can update" });
     }
     
-    // Require signature proof of ownership
     if (!authSignature || !authMessage) {
       return res.status(403).json({ 
         error: "Signature required. Sign a message containing the agent ID and current timestamp with your owner wallet.",
@@ -1111,7 +1064,6 @@ app.put("/agents/:id", [
       });
     }
     
-    // Verify ed25519 signature
     try {
       const { PublicKey } = require('@solana/web3.js');
       const nacl = require('tweetnacl');
@@ -1123,11 +1075,9 @@ app.put("/agents/:id", [
       if (!isValid) {
         return res.status(403).json({ error: "Invalid signature" });
       }
-      // Verify message contains the correct agent ID
       if (!authMessage.includes(`update:${agentId}:`)) {
         return res.status(403).json({ error: "Signature message must contain the agent ID" });
       }
-      // Verify timestamp is recent (within 5 minutes)
       const msgParts = authMessage.split(':');
       const msgTimestamp = parseInt(msgParts[2]);
       const now = Math.floor(Date.now() / 1000);
@@ -1141,21 +1091,22 @@ app.put("/agents/:id", [
     // Build update query dynamically
     const updates = [];
     const values = [];
+    let paramIndex = 1;
     
     if (name !== undefined) {
-      updates.push("name = ?");
+      updates.push(`name = $${paramIndex++}`);
       values.push(name);
     }
     if (description !== undefined) {
-      updates.push("description = ?");
+      updates.push(`description = $${paramIndex++}`);
       values.push(description);
     }
     if (agentUri !== undefined) {
-      updates.push("agent_uri = ?");
+      updates.push(`agent_uri = $${paramIndex++}`);
       values.push(agentUri);
     }
     if (active !== undefined) {
-      updates.push("active = ?");
+      updates.push(`active = $${paramIndex++}`);
       values.push(active ? 1 : 0);
     }
     
@@ -1163,13 +1114,12 @@ app.put("/agents/:id", [
       return res.status(400).json({ error: "No fields to update" });
     }
 
-    updates.push("updated_at = ?");
+    updates.push(`updated_at = $${paramIndex++}`);
     values.push(Math.floor(Date.now() / 1000));
     values.push(agentId);
 
-    const updateQuery = `UPDATE agents SET ${updates.join(", ")} WHERE agent_id = ?`;
-    const updateStmt = safePreparedStatement(db, updateQuery, values);
-    updateStmt.run(...values);
+    const updateQuery = `UPDATE agents SET ${updates.join(", ")} WHERE agent_id = $${paramIndex}`;
+    await pool.query(updateQuery, values);
 
     res.json({ success: true, agentId: Number(agentId) });
   } catch (error) {
@@ -1185,7 +1135,6 @@ app.get("/health", (_, res) => res.json({ status: "ok" }));
 if (process.env.NODE_ENV === 'production') {
   const frontendPath = path.join(__dirname, '..', 'frontend', 'dist');
   app.use(express.static(frontendPath));
-  // SPA fallback — serve index.html for all non-API routes
   app.get('*', (req, res) => {
     if (!req.path.startsWith('/agents') && !req.path.startsWith('/stats') && 
         !req.path.startsWith('/leaderboard') && !req.path.startsWith('/search') &&
@@ -1200,14 +1149,40 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// SECURITY: Connection timeouts to prevent Slowloris attacks
-server.timeout = 30000; // 30s request timeout
-server.headersTimeout = 10000; // 10s to send headers
-server.keepAliveTimeout = 5000; // 5s keep-alive
-server.maxHeadersCount = 50; // Limit header count
+// SECURITY: Connection timeouts
+server.timeout = 30000;
+server.headersTimeout = 10000;
+server.keepAliveTimeout = 5000;
+server.maxHeadersCount = 50;
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down...');
+  clearInterval(wsHeartbeat);
+  wss.close();
+  server.close();
+  await pool.end();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down...');
+  clearInterval(wsHeartbeat);
+  wss.close();
+  server.close();
+  await pool.end();
+  process.exit(0);
+});
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Agent Bazaar API running on port ${PORT}`);
-  console.log(`WebSocket server on ws://localhost:${PORT}/ws`);
+
+// Initialize database then start server
+initDatabase().then(() => {
+  server.listen(PORT, () => {
+    console.log(`Agent Bazaar API running on port ${PORT}`);
+    console.log(`WebSocket server on ws://localhost:${PORT}/ws`);
+  });
+}).catch(err => {
+  console.error("❌ Failed to initialize database:", err);
+  process.exit(1);
 });
