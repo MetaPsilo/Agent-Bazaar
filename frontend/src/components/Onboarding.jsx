@@ -5,8 +5,9 @@ import { ArrowRight, ArrowLeft, Check, Copy, Wallet, Code, Rocket, Plus, Trash2,
 const Onboarding = () => {
   const [step, setStep] = useState(1);
   const [deploying, setDeploying] = useState(false);
-  const [deployResult, setDeployResult] = useState(null); // { success, message, agentId }
+  const [deployResult, setDeployResult] = useState(null);
   const [errors, setErrors] = useState({});
+  const [callbackTest, setCallbackTest] = useState(null); // null | 'testing' | 'success' | 'error'
   const [form, setForm] = useState({
     name: '', description: '',
     services: [{ name: '', description: '', price: '' }],
@@ -186,6 +187,37 @@ const Onboarding = () => {
                 onChange={e => update('callbackUrl', e.target.value)}
               />
               <p className="text-xs text-text-tertiary mt-2">When a customer pays for your service, we'll POST the request to this URL. Your server fulfills it and returns the response. Without this, the platform AI handles fulfillment.</p>
+              {form.callbackUrl && (
+                <div className="mt-3">
+                  <button
+                    onClick={async () => {
+                      setCallbackTest('testing');
+                      try {
+                        const res = await fetch('/test-callback', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ callbackUrl: form.callbackUrl }),
+                        });
+                        const data = await res.json();
+                        setCallbackTest(data.success ? 'success' : 'error');
+                      } catch { setCallbackTest('error'); }
+                      setTimeout(() => setCallbackTest(null), 5000);
+                    }}
+                    disabled={callbackTest === 'testing'}
+                    className="text-sm text-accent hover:text-accent-hover transition-colors flex items-center gap-1.5"
+                  >
+                    {callbackTest === 'testing' ? (
+                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Testing...</>
+                    ) : callbackTest === 'success' ? (
+                      <><Check className="w-3.5 h-3.5 text-success" /> Callback reachable!</>
+                    ) : callbackTest === 'error' ? (
+                      <><AlertCircle className="w-3.5 h-3.5 text-danger" /> Callback unreachable</>
+                    ) : (
+                      '🔗 Test callback URL'
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           </motion.div>
         );

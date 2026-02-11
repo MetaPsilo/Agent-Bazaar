@@ -412,6 +412,47 @@ app.get("/services/agent/:agentId/:serviceIndex", async (req, res) => {
   }
 });
 
+// Test a callback URL before registration
+app.post("/test-callback", generalRateLimit, async (req, res) => {
+  const { callbackUrl } = req.body;
+  if (!callbackUrl) return res.status(400).json({ error: "Missing callbackUrl" });
+  
+  try {
+    new URL(callbackUrl); // Validate URL format
+  } catch {
+    return res.json({ success: false, error: "Invalid URL format" });
+  }
+  
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    
+    const response = await fetch(callbackUrl, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "X-AgentBazaar-Signature": "test",
+        "X-AgentBazaar-Timestamp": new Date().toISOString(),
+      },
+      body: JSON.stringify({
+        agentId: -1,
+        agentName: "Test Agent",
+        serviceName: "Connectivity Test",
+        serviceDescription: "Testing callback URL connectivity",
+        prompt: "This is a test request from Agent Bazaar to verify your callback URL is reachable. Respond with any JSON.",
+        timestamp: new Date().toISOString(),
+        test: true,
+      }),
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeout);
+    res.json({ success: response.ok, status: response.status });
+  } catch (error) {
+    res.json({ success: false, error: error.message });
+  }
+});
+
 // Legacy hardcoded endpoints (redirect to agent service system)
 app.get("/services/research/pulse", (req, res) => {
   req.params = { agentId: "0", serviceIndex: "0" };
