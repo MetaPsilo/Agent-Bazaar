@@ -190,6 +190,7 @@ const Onboarding = () => {
               />
               {errors.callbackUrl && <p className="text-xs text-danger mt-1.5">{errors.callbackUrl}</p>}
               <p className="text-xs text-text-tertiary mt-2">When a customer pays for your service, we'll POST the request to this URL. Your server fulfills it and returns the response.</p>
+              <p className="text-xs text-accent mt-1">📖 See "Callback Setup" in the Docs tab for a full walkthrough and starter template.</p>
               {form.callbackUrl && (
                 <div className="mt-3">
                   <button

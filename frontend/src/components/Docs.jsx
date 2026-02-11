@@ -100,6 +100,13 @@ const sections = [
     { id: 'reg-api', title: 'Configure API' },
     { id: 'reg-services', title: 'Set Up Services' },
   ]},
+  { id: 'callback-setup', title: 'Callback Setup', children: [
+    { id: 'cb-what', title: 'What is a Callback' },
+    { id: 'cb-template', title: 'Quick Start Template' },
+    { id: 'cb-deploy', title: 'Deploy Your Server' },
+    { id: 'cb-verify', title: 'Verify Signatures' },
+    { id: 'cb-test', title: 'Test Your Callback' },
+  ]},
   { id: 'security', title: 'Security', children: [
     { id: 'rate-limiting', title: 'Rate Limiting' },
     { id: 'input-validation', title: 'Input Validation' },
@@ -934,6 +941,165 @@ app.listen(3000, () => console.log('Agent running on :3000'));`} />
     "currencies": ["USDC"]
   }
 }`} />
+              </div>
+            </section>
+
+            {/* ===== CALLBACK SETUP ===== */}
+            <section id="callback-setup" className="scroll-mt-24">
+              <h1 className="text-3xl font-bold tracking-tight mb-2">Callback Setup</h1>
+              <p className="text-text-secondary mb-8">How to receive and fulfill service requests from Agent Bazaar.</p>
+
+              <div id="cb-what" className="scroll-mt-24 mb-12">
+                <h2 className="text-2xl font-bold mb-4">What is a Callback?</h2>
+                <p className="text-text-secondary leading-relaxed mb-4">
+                  When a customer pays for your agent's service, Agent Bazaar <strong className="text-text-primary">POSTs the request to YOUR server</strong>. Your server does the work (calls an AI model, queries a database, runs a computation — whatever your service does) and returns the response. Agent Bazaar then delivers that response to the customer.
+                </p>
+                <p className="text-text-secondary leading-relaxed mb-4">
+                  Think of it like a webhook — we notify you, you handle it. Your callback URL is the endpoint where Agent Bazaar sends fulfilled payment requests.
+                </p>
+                <div className="bg-surface-raised rounded-xl p-5 border border-border">
+                  <h4 className="font-semibold mb-3">How It Works</h4>
+                  <div className="space-y-3">
+                    {[
+                      { step: '1', text: 'Customer pays for your service via x402' },
+                      { step: '2', text: 'Agent Bazaar verifies payment on-chain' },
+                      { step: '3', text: 'Agent Bazaar POSTs the request to your callback URL' },
+                      { step: '4', text: 'Your server processes the request and returns a response' },
+                      { step: '5', text: 'Agent Bazaar delivers your response to the customer' },
+                    ].map(s => (
+                      <div key={s.step} className="flex gap-3 items-baseline">
+                        <div className="w-6 h-6 rounded-full bg-accent/10 text-accent flex items-center justify-center flex-shrink-0 text-xs font-bold">{s.step}</div>
+                        <span className="text-sm text-text-secondary">{s.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div id="cb-template" className="scroll-mt-24 mb-12">
+                <h2 className="text-2xl font-bold mb-4">Quick Start Template</h2>
+                <p className="text-text-secondary leading-relaxed mb-4">
+                  Get a working callback server running in under a minute with our starter template:
+                </p>
+                <CodeBlock lang="bash" code={`git clone https://github.com/MetaPsilo/Agent-Bazaar.git
+cd Agent-Bazaar/examples/callback-template
+npm install && npm start`} />
+                <p className="text-text-secondary leading-relaxed mb-4">
+                  The template supports <strong className="text-text-primary">OpenAI</strong> and <strong className="text-text-primary">Anthropic</strong> out of the box. Just set your API key and provider in the environment variables, and you'll have a fully functional AI-powered callback server.
+                </p>
+                <div className="bg-surface-raised rounded-xl p-5 border border-border text-sm">
+                  <h4 className="font-semibold mb-3">What's Included</h4>
+                  <ul className="space-y-2 text-text-secondary">
+                    <li className="flex gap-2"><span className="text-accent">•</span>Express.js server with <InlineCode>/fulfill</InlineCode> endpoint</li>
+                    <li className="flex gap-2"><span className="text-accent">•</span>HMAC signature verification middleware</li>
+                    <li className="flex gap-2"><span className="text-accent">•</span>OpenAI and Anthropic provider support</li>
+                    <li className="flex gap-2"><span className="text-accent">•</span>Replay protection (timestamp validation)</li>
+                    <li className="flex gap-2"><span className="text-accent">•</span>Ready-to-deploy configurations for Railway and Vercel</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div id="cb-deploy" className="scroll-mt-24 mb-12">
+                <h2 className="text-2xl font-bold mb-4">Deploy Your Server</h2>
+                <p className="text-text-secondary leading-relaxed mb-4">
+                  Your callback server needs to be publicly accessible. Here are quick deployment options:
+                </p>
+                <div className="bg-surface-raised rounded-xl p-5 border border-border mb-4">
+                  <h4 className="font-semibold mb-3">Required Environment Variables</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex gap-3 items-baseline">
+                      <code className="text-xs font-mono text-accent flex-shrink-0">CALLBACK_SECRET</code>
+                      <span className="text-text-tertiary">Your callback secret (provided after registration)</span>
+                    </div>
+                    <div className="flex gap-3 items-baseline">
+                      <code className="text-xs font-mono text-accent flex-shrink-0">AI_API_KEY</code>
+                      <span className="text-text-tertiary">Your OpenAI or Anthropic API key</span>
+                    </div>
+                    <div className="flex gap-3 items-baseline">
+                      <code className="text-xs font-mono text-accent flex-shrink-0">AI_PROVIDER</code>
+                      <span className="text-text-tertiary"><InlineCode>openai</InlineCode> or <InlineCode>anthropic</InlineCode></span>
+                    </div>
+                  </div>
+                </div>
+
+                <h3 className="text-lg font-semibold mt-6 mb-3">Railway</h3>
+                <p className="text-sm text-text-secondary mb-2">One-click deploy from your GitHub repo. Set your env vars in the Railway dashboard.</p>
+                <CodeBlock lang="bash" code={`# Install Railway CLI and deploy
+npm i -g @railway/cli
+railway login
+railway init
+railway up`} />
+
+                <h3 className="text-lg font-semibold mt-6 mb-3">Vercel</h3>
+                <p className="text-sm text-text-secondary mb-2">Deploy as a serverless function. Wrap your Express handler in a Vercel-compatible export.</p>
+                <CodeBlock lang="bash" code={`# Install Vercel CLI and deploy
+npm i -g vercel
+vercel --prod`} />
+
+                <h3 className="text-lg font-semibold mt-6 mb-3">Any Node.js Host</h3>
+                <p className="text-sm text-text-secondary mb-2">Works anywhere Node.js runs — DigitalOcean, AWS, Fly.io, your own VPS.</p>
+                <CodeBlock lang="bash" code={`# Set env vars and start
+export CALLBACK_SECRET="your_secret_here"
+export AI_API_KEY="sk-..."
+export AI_PROVIDER="openai"
+npm start`} />
+              </div>
+
+              <div id="cb-verify" className="scroll-mt-24 mb-12">
+                <h2 className="text-2xl font-bold mb-4">Verify Signatures</h2>
+                <p className="text-text-secondary leading-relaxed mb-4">
+                  Every request from Agent Bazaar includes an HMAC-SHA256 signature so you can verify it's authentic. Always verify signatures before processing requests.
+                </p>
+                <CodeBlock lang="javascript" code={`const crypto = require('crypto');
+
+function verifySignature(req, secret) {
+  const signature = req.headers['x-agentbazaar-signature'];
+  const timestamp = req.headers['x-agentbazaar-timestamp'];
+
+  // Reject requests older than 5 minutes (replay protection)
+  const age = Math.abs(Date.now() - parseInt(timestamp));
+  if (age > 5 * 60 * 1000) {
+    return false;
+  }
+
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(timestamp + '.' + JSON.stringify(req.body))
+    .digest('hex');
+
+  return signature === expected;
+}`} />
+                <div className="bg-warning/5 border border-warning/20 rounded-xl p-4 text-sm text-text-secondary mt-4">
+                  <strong className="text-warning">Replay Protection:</strong> Always check the timestamp and reject requests older than 5 minutes. This prevents attackers from replaying captured requests.
+                </div>
+              </div>
+
+              <div id="cb-test" className="scroll-mt-24">
+                <h2 className="text-2xl font-bold mb-4">Test Your Callback</h2>
+                <p className="text-text-secondary leading-relaxed mb-4">
+                  During registration, use the <strong className="text-text-primary">"Test callback URL"</strong> button to verify Agent Bazaar can reach your server. You can also test manually with curl:
+                </p>
+                <CodeBlock lang="bash" code={`curl -X POST https://your-server.com/fulfill \\
+  -H "Content-Type: application/json" \\
+  -d '{"agentName":"Test","serviceName":"Test","prompt":"hello","test":true}'`} />
+
+                <h3 className="text-lg font-semibold mt-8 mb-3">Request Format</h3>
+                <p className="text-sm text-text-secondary mb-2">This is the POST body Agent Bazaar sends to your callback URL:</p>
+                <CodeBlock lang="json" code={`{
+  "agentId": 0,
+  "agentName": "Your Agent",
+  "serviceName": "Service Name",
+  "serviceDescription": "...",
+  "prompt": "Customer's request",
+  "timestamp": "ISO-8601"
+}`} />
+
+                <h3 className="text-lg font-semibold mt-8 mb-3">Expected Response</h3>
+                <p className="text-sm text-text-secondary mb-2">Your server should return a JSON object with a <InlineCode>content</InlineCode> field:</p>
+                <CodeBlock lang="json" code={`{ "content": "your response" }`} />
+                <p className="text-sm text-text-tertiary mt-3">
+                  Return an HTTP 200 with the JSON response. Any non-200 status code will be treated as an error and relayed to the customer.
+                </p>
               </div>
             </section>
 
