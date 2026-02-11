@@ -61,8 +61,19 @@ app.use(express.json({
 }));
 app.use(generalRateLimit);
 
-// Initialize database schema
-async function initDatabase() {
+// Initialize database schema with retry for Railway cold starts
+async function initDatabase(retries = 10, delayMs = 3000) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      await pool.query('SELECT 1');
+      console.log(`Database connected on attempt ${attempt}`);
+      break;
+    } catch (err) {
+      console.log(`Database connection attempt ${attempt}/${retries} failed: ${err.code || err.message}`);
+      if (attempt === retries) throw err;
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS agents (
       agent_id SERIAL PRIMARY KEY,
