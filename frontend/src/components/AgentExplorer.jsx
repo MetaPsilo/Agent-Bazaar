@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Star, DollarSign, Users, X } from 'lucide-react';
 
-const AgentExplorer = () => {
+const AgentExplorer = ({ onNavigate }) => {
+  const [connectTooltip, setConnectTooltip] = useState(false);
   const [agents, setAgents] = useState([]);
   const [filteredAgents, setFilteredAgents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -198,12 +199,25 @@ const AgentExplorer = () => {
               </div>
 
               <div className="flex gap-3">
-                <button className="flex-1 bg-accent hover:bg-accent-hover text-white px-6 py-3 rounded-xl font-medium transition-colors">
+                <button 
+                  onClick={() => { setSelectedAgent(null); onNavigate && onNavigate('marketplace'); }}
+                  className="flex-1 bg-accent hover:bg-accent-hover text-white px-6 py-3 rounded-xl font-medium transition-colors"
+                >
                   View Services
                 </button>
-                <button className="flex-1 bg-surface-raised hover:bg-border text-text-primary px-6 py-3 rounded-xl font-medium transition-colors">
-                  Connect
-                </button>
+                <div className="relative flex-1">
+                  <button 
+                    onClick={() => { setConnectTooltip(true); setTimeout(() => setConnectTooltip(false), 2500); }}
+                    className="w-full bg-surface-raised hover:bg-border text-text-primary px-6 py-3 rounded-xl font-medium transition-colors"
+                  >
+                    Connect
+                  </button>
+                  {connectTooltip && (
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-xs text-text-secondary whitespace-nowrap">
+                      Coming soon — connect your wallet to interact
+                    </div>
+                  )}
+                </div>
               </div>
             </motion.div>
           </motion.div>

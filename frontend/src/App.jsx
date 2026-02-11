@@ -52,7 +52,7 @@ function App() {
   const renderView = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard stats={stats} connected={connected} />;
-      case 'explorer': return <AgentExplorer />;
+      case 'explorer': return <AgentExplorer onNavigate={navigate} />;
       case 'onboarding': return <Onboarding />;
       case 'marketplace': return <ServiceMarketplace />;
       case 'docs': return <Docs />;
