@@ -1,15 +1,17 @@
 /**
  * Agent Bazaar → OpenClaw Callback Server
  * 
- * Routes paid service requests from Agent Bazaar directly to your OpenClaw bot.
- * Your bot handles the request with all its tools, memory, and personality.
+ * Routes paid service requests from Agent Bazaar directly to your OpenClaw bot
+ * via the OpenAI-compatible Chat Completions API.
  * 
+ * Your bot handles the request with all its tools, memory, and personality.
  * No external AI API key needed — your bot IS the AI.
  * 
  * Required env vars:
  *   CALLBACK_SECRET        — Your agent's callback secret (from registration)
  *   OPENCLAW_GATEWAY_URL   — Your OpenClaw gateway URL (default: http://localhost:18789)
  *   OPENCLAW_GATEWAY_TOKEN — Your OpenClaw gateway token
+ *   OPENCLAW_AGENT_ID      — Agent ID to route to (default: main)
  *   PORT                   — Server port (default: 3001)
  */
 
@@ -24,6 +26,7 @@ const PORT = process.env.PORT || 3001;
 const CALLBACK_SECRET = process.env.CALLBACK_SECRET || "";
 const OPENCLAW_GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789";
 const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || "";
+const OPENCLAW_AGENT_ID = process.env.OPENCLAW_AGENT_ID || "main";
 
 // ============================================================
 // SIGNATURE VERIFICATION
@@ -48,24 +51,27 @@ function verifySignature(req) {
 }
 
 // ============================================================
-// OPENCLAW SESSION API
-// Send a message to the bot and get a response
+// OPENCLAW CHAT COMPLETIONS API
+// Uses the OpenAI-compatible endpoint built into OpenClaw Gateway
 // ============================================================
-async function askOpenClaw(prompt, timeoutSeconds = 120) {
-  const url = `${OPENCLAW_GATEWAY_URL}/api/sessions/send`;
+async function askOpenClaw(systemPrompt, userPrompt, timeoutMs = 120000) {
+  const url = `${OPENCLAW_GATEWAY_URL}/v1/chat/completions`;
   
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${OPENCLAW_GATEWAY_TOKEN}`,
+      "x-openclaw-agent-id": OPENCLAW_AGENT_ID,
     },
     body: JSON.stringify({
-      message: prompt,
-      label: "agentbazaar-callback",
-      timeoutSeconds,
+      model: `openclaw:${OPENCLAW_AGENT_ID}`,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
     }),
-    signal: AbortSignal.timeout(timeoutSeconds * 1000 + 5000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   
   if (!res.ok) {
@@ -74,7 +80,13 @@ async function askOpenClaw(prompt, timeoutSeconds = 120) {
   }
   
   const data = await res.json();
-  return data.reply || data.message || JSON.stringify(data);
+  const content = data.choices?.[0]?.message?.content;
+  
+  if (!content) {
+    throw new Error(`Empty response from OpenClaw: ${JSON.stringify(data)}`);
+  }
+  
+  return content;
 }
 
 // ============================================================
@@ -90,16 +102,9 @@ app.post("/fulfill", async (req, res) => {
   console.log(`📥 [${new Date().toISOString()}] ${serviceName}: "${prompt?.substring(0, 80)}..."`);
   
   try {
-    // Build a contextual prompt for the bot
-    const botPrompt = [
-      `🛒 AGENT BAZAAR SERVICE REQUEST`,
-      `Service: ${serviceName}${serviceDescription ? ` — ${serviceDescription}` : ""}`,
-      `Customer prompt: ${prompt}`,
-      ``,
-      `Fulfill this paid service request. Respond with the service content only — no meta-commentary about being an agent or receiving a request.`,
-    ].join("\n");
+    const systemPrompt = `You are ${agentName || "an AI agent"} on Agent Bazaar, fulfilling a paid "${serviceName}" request.${serviceDescription ? ` Service description: ${serviceDescription}` : ""} Respond professionally and thoroughly. Output only the service content — no meta-commentary.`;
     
-    const content = await askOpenClaw(botPrompt);
+    const content = await askOpenClaw(systemPrompt, prompt);
     
     console.log(`✅ Response generated (${content.length} chars)`);
     res.json({ content });
@@ -115,6 +120,7 @@ app.get("/", (req, res) => {
     agent: "Agent Bazaar OpenClaw Callback",
     status: "online",
     gateway: OPENCLAW_GATEWAY_URL,
+    agentId: OPENCLAW_AGENT_ID,
     configured: !!OPENCLAW_GATEWAY_TOKEN,
   });
 });
@@ -123,7 +129,8 @@ app.get("/health", (req, res) => res.json({ status: "ok" }));
 
 app.listen(PORT, () => {
   console.log(`🤖 Agent Bazaar ↔ OpenClaw callback server on port ${PORT}`);
-  console.log(`   Gateway: ${OPENCLAW_GATEWAY_URL}`);
+  console.log(`   Gateway: ${OPENCLAW_GATEWAY_URL}/v1/chat/completions`);
+  console.log(`   Agent: ${OPENCLAW_AGENT_ID}`);
   console.log(`   Token: ${OPENCLAW_GATEWAY_TOKEN ? "configured ✓" : "NOT SET"}`);
   console.log(`   Secret: ${CALLBACK_SECRET ? "configured ✓" : "NOT SET — signature verification disabled"}`);
 });
