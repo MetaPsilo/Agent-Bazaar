@@ -143,18 +143,47 @@ const ServiceMarketplace = () => {
               onClick={e => e.stopPropagation()}
             >
               <div>
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center justify-between mb-2">
                   <h3 className="text-xl font-semibold">{selected.name}</h3>
                   <button onClick={reset} className="p-2 hover:bg-surface-raised rounded-lg"><X className="w-5 h-5 text-text-tertiary" /></button>
                 </div>
-                <div className="bg-surface-raised rounded-xl p-4 space-y-3 text-sm mb-6">
-                  <div className="flex justify-between"><span className="text-text-tertiary">Provider</span><span className="text-accent">{selected.agent}</span></div>
-                  <div className="flex justify-between"><span className="text-text-tertiary">Price per call</span><span className="font-medium">${selected.price} USDC</span></div>
-                  <div className="flex justify-between"><span className="text-text-tertiary">Protocol</span><span className="font-medium">x402</span></div>
+                <p className="text-sm text-text-tertiary mb-4">by <span className="text-accent">{selected.agent}</span></p>
+                
+                <p className="text-sm text-text-secondary leading-relaxed mb-5">{selected.description}</p>
+
+                <div className="grid grid-cols-3 gap-3 mb-5">
+                  <div className="bg-surface-raised rounded-xl p-3 text-center">
+                    <div className="text-lg font-bold text-yellow-400">★ {selected.rating}</div>
+                    <div className="text-xs text-text-tertiary">Rating</div>
+                  </div>
+                  <div className="bg-surface-raised rounded-xl p-3 text-center">
+                    <div className="text-lg font-bold">{selected.usage?.toLocaleString()}</div>
+                    <div className="text-xs text-text-tertiary">Uses</div>
+                  </div>
+                  <div className="bg-surface-raised rounded-xl p-3 text-center">
+                    <div className="text-lg font-bold">{selected.responseTime}</div>
+                    <div className="text-xs text-text-tertiary">Response</div>
+                  </div>
                 </div>
-                <div className="bg-accent/10 border border-accent/20 rounded-xl p-4 mb-6">
-                  <p className="text-sm text-text-secondary leading-relaxed">
-                    <span className="text-accent font-medium">Agent-to-agent only.</span> Services on AgentBazaar are purchased programmatically by AI agents via the x402 HTTP payment protocol — not through this UI. See the <span className="text-accent">Docs</span> tab for integration details.
+
+                <div className="mb-5">
+                  <div className="text-xs text-text-tertiary mb-2">Capabilities</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selected.features?.map(f => (
+                      <span key={f} className="px-2 py-1 bg-surface-raised text-xs rounded-md text-text-secondary">{f}</span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-surface-raised rounded-xl p-4 space-y-3 text-sm mb-5">
+                  <div className="flex justify-between"><span className="text-text-tertiary">Price per call</span><span className="font-bold">${selected.price} USDC</span></div>
+                  <div className="flex justify-between"><span className="text-text-tertiary">Payment protocol</span><span className="font-medium">x402</span></div>
+                  <div className="flex justify-between"><span className="text-text-tertiary">Network</span><span className="font-medium">Solana</span></div>
+                </div>
+
+                <div className="bg-accent/10 border border-accent/20 rounded-xl p-3 mb-5">
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    <span className="text-accent font-medium">Agent-to-agent only.</span> Purchased programmatically by AI agents via x402 — see Docs for integration.
                   </p>
                 </div>
                 <button onClick={reset} className="w-full bg-surface-raised hover:bg-border py-3 rounded-xl font-medium transition-colors">Close</button>
