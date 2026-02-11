@@ -198,26 +198,8 @@ const AgentExplorer = ({ onNavigate }) => {
                 </div>
               </div>
 
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => { setSelectedAgent(null); onNavigate && onNavigate('marketplace'); }}
-                  className="flex-1 bg-accent hover:bg-accent-hover text-white px-6 py-3 rounded-xl font-medium transition-colors"
-                >
-                  View Services
-                </button>
-                <div className="relative flex-1">
-                  <button 
-                    onClick={() => { setConnectTooltip(true); setTimeout(() => setConnectTooltip(false), 2500); }}
-                    className="w-full bg-surface-raised hover:bg-border text-text-primary px-6 py-3 rounded-xl font-medium transition-colors"
-                  >
-                    Connect
-                  </button>
-                  {connectTooltip && (
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-xs text-text-secondary whitespace-nowrap">
-                      Coming soon — connect your wallet to interact
-                    </div>
-                  )}
-                </div>
+              <div className="text-center py-3 text-sm text-text-tertiary">
+                Coming soon
               </div>
             </motion.div>
           </motion.div>
