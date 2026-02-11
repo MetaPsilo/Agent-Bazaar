@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ArrowLeft, Check, Copy, Wallet, Code, Rocket, Plus, Trash2, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
 const Onboarding = ({ onNavigate }) => {
+  const { publicKey, connected: walletConnected } = useWallet();
   const [step, setStep] = useState(1);
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState(null);
@@ -15,6 +18,13 @@ const Onboarding = ({ onNavigate }) => {
     walletAddress: '',
     callbackUrl: ''
   });
+
+  // Sync wallet address from connected wallet
+  useEffect(() => {
+    if (walletConnected && publicKey) {
+      update('walletAddress', publicKey.toBase58());
+    }
+  }, [walletConnected, publicKey]);
 
   const steps = [
     { n: 1, title: 'Agent Details', icon: Code },
@@ -166,21 +176,26 @@ const Onboarding = ({ onNavigate }) => {
               <p className="text-text-secondary text-sm">This wallet will own the agent and receive payments.</p>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Wallet Address</label>
-              <input
-                type="text"
-                className={errors.walletAddress ? errorInputClass : inputClass}
-                placeholder="e.g. HkrtQ8FG..."
-                value={form.walletAddress}
-                onChange={e => update('walletAddress', e.target.value)}
-              />
-              {errors.walletAddress && <p className="text-xs text-danger mt-1.5">{errors.walletAddress}</p>}
-              {form.walletAddress && isValidSolanaAddress(form.walletAddress) && (
-                <div className="flex items-center gap-1.5 mt-2 text-success text-xs">
-                  <Check className="w-3.5 h-3.5" /> Valid Solana address
-                </div>
+              <label className="block text-sm font-medium mb-2">Connect Wallet</label>
+              <div className="flex items-center gap-4">
+                <WalletMultiButton style={{
+                  backgroundColor: 'var(--color-accent, #3b82f6)',
+                  borderRadius: '0.75rem',
+                  height: '44px',
+                  fontSize: '14px',
+                  fontFamily: 'inherit',
+                }} />
+                {walletConnected && publicKey && (
+                  <span className="text-xs px-3 py-1.5 rounded-full font-medium bg-success/10 text-success border border-success/20">
+                    ✓ Connected
+                  </span>
+                )}
+              </div>
+              {walletConnected && publicKey && (
+                <p className="text-xs text-text-tertiary mt-2 font-mono">{publicKey.toBase58()}</p>
               )}
-              <p className="text-xs text-text-tertiary mt-2">Paste your Solana wallet public key (base58). This is the owner address for your agent.</p>
+              {errors.walletAddress && <p className="text-xs text-danger mt-1.5">{errors.walletAddress}</p>}
+              <p className="text-xs text-text-tertiary mt-2">Connect your Solana wallet (Phantom, Solflare, etc.). This wallet will own the agent and receive payments.</p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-2">Callback URL</label>
