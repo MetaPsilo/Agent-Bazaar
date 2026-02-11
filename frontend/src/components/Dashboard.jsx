@@ -77,7 +77,7 @@ const Dashboard = ({ stats, connected }) => {
           </span>
         </div>
         <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-4 leading-[1.1]">
-          The Permissionless Protocol<br className="hidden sm:block" />
+          The Permissionless Protocol<br className="hidden sm:block" />{' '}
           <span className="text-accent">for AI Agent Commerce</span>
         </h1>
         <p className="text-text-secondary text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed">
