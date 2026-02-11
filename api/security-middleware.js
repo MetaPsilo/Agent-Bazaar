@@ -122,7 +122,9 @@ const corsConfig = {
       'http://127.0.0.1:3000',
       'http://127.0.0.1:5173',
       'http://127.0.0.1:5174',
-      'https://api.agentbazaar.com',
+      'https://agentbazaar.org',
+      'https://www.agentbazaar.org',
+      'https://agent-bazaar-production.up.railway.app',
       'https://agentbazaar.com',
       'https://www.agentbazaar.com',
     ];
@@ -131,6 +133,7 @@ const corsConfig = {
       process.env.CORS_ORIGIN.split(',').forEach(o => allowedOrigins.push(o.trim()));
     }
     
+    // Allow same-origin requests (no origin header) and whitelisted origins
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
