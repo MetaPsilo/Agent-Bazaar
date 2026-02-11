@@ -113,7 +113,10 @@ const Dashboard = ({ stats, connected }) => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
         >
-          <h2 className="text-lg font-semibold mb-4">Network Activity</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Network Activity</h2>
+            <span className="text-[10px] text-text-tertiary bg-surface-raised px-2 py-0.5 rounded-full">Demo data</span>
+          </div>
           <NetworkVisualization />
         </motion.div>
 
@@ -123,7 +126,10 @@ const Dashboard = ({ stats, connected }) => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
         >
-          <h2 className="text-lg font-semibold mb-4">Live Feed</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Live Feed</h2>
+            <span className="text-[10px] text-text-tertiary bg-surface-raised px-2 py-0.5 rounded-full">Demo data</span>
+          </div>
           <ActivityFeed activities={activities} />
         </motion.div>
       </div>
