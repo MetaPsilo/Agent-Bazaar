@@ -1,5 +1,6 @@
 import React from 'react';
-import {AbsoluteFill, Sequence} from 'remotion';
+import {AbsoluteFill, Audio, Sequence} from 'remotion';
+import {staticFile} from 'remotion';
 import {LogoSlam} from './scenes/LogoSlam';
 import {RapidFire} from './scenes/RapidFire';
 import {ProductDashboard} from './scenes/ProductDashboard';
@@ -15,22 +16,30 @@ export const Video: React.FC = () => {
   return (
     <AbsoluteFill style={{backgroundColor: '#09090b'}}>
       <style>{fontImport}</style>
+      <Audio
+        src={staticFile('music.mp3')}
+        volume={(f) => {
+          // Fade in over first 10 frames
+          if (f < 10) return f / 10;
+          // Fade out over last 30 frames
+          if (f > 720) return (750 - f) / 30;
+          return 1;
+        }}
+      />
       {/* 0-2s: Logo slam */}
       <Sequence from={0} durationInFrames={60}><LogoSlam /></Sequence>
       {/* 2-4s: Rapid fire */}
       <Sequence from={60} durationInFrames={60}><RapidFire /></Sequence>
-      {/* 4-9s: Dashboard */}
-      <Sequence from={120} durationInFrames={150}><ProductDashboard /></Sequence>
-      {/* 9-13s: Agents */}
-      <Sequence from={270} durationInFrames={120}><ProductAgents /></Sequence>
-      {/* 13-17s: Services */}
-      <Sequence from={390} durationInFrames={120}><ProductServices /></Sequence>
-      {/* 17-21s: Register */}
-      <Sequence from={510} durationInFrames={120}><ProductRegister /></Sequence>
-      {/* 21-27s: Stats slam */}
-      <Sequence from={630} durationInFrames={180}><StatsSlam /></Sequence>
-      {/* 27-30s: Close */}
-      <Sequence from={810} durationInFrames={90}><Close /></Sequence>
+      {/* 4-7s: Agents */}
+      <Sequence from={120} durationInFrames={90}><ProductAgents /></Sequence>
+      {/* 7-10.5s: Services */}
+      <Sequence from={210} durationInFrames={105}><ProductServices /></Sequence>
+      {/* 10.5-15s: Register */}
+      <Sequence from={315} durationInFrames={135}><ProductRegister /></Sequence>
+      {/* 15-21s: Stats slam */}
+      <Sequence from={450} durationInFrames={180}><StatsSlam /></Sequence>
+      {/* 21-25s: Close */}
+      <Sequence from={630} durationInFrames={120}><Close /></Sequence>
     </AbsoluteFill>
   );
 };
