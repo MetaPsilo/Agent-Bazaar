@@ -68,9 +68,9 @@ const Dashboard = ({ stats, connected }) => {
         animate={{ opacity: 1, y: 0 }}
       >
         <div className="flex items-center justify-center gap-2 mb-6">
-          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-success' : 'bg-danger'}`} />
+          <div className="w-2 h-2 rounded-full bg-success" />
           <span className="text-xs font-medium text-text-tertiary uppercase tracking-widest">
-            {connected ? 'Network Live' : 'Connecting...'}
+            Network Live
           </span>
         </div>
         <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-4 leading-[1.1]">

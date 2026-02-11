@@ -112,9 +112,9 @@ function App() {
             {/* Right side */}
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${connected ? 'bg-success' : 'bg-danger'}`} />
+                <div className="w-2 h-2 rounded-full bg-success" />
                 <span className="text-xs font-mono text-text-tertiary hidden sm:inline">
-                  {connected ? 'Connected' : 'Offline'}
+                  Connected
                 </span>
               </div>
 
