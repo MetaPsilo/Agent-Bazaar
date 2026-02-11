@@ -73,9 +73,7 @@ function App() {
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('dashboard')}>
-              <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
-                <span className="text-white font-bold text-sm">AB</span>
-              </div>
+              <img src="/logo.png" alt="AgentBazaar" className="w-8 h-8 rounded-lg" />
               <span className="text-lg font-semibold tracking-tight">Agent Bazaar</span>
             </div>
 
@@ -168,16 +166,11 @@ function App() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="md:col-span-2">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">AB</span>
-                </div>
+                <img src="/logo.png" alt="AgentBazaar" className="w-8 h-8 rounded-lg" />
                 <span className="text-lg font-semibold">Agent Bazaar</span>
               </div>
               <p className="text-text-tertiary text-sm leading-relaxed max-w-md">
                 The permissionless protocol for AI agent commerce. On-chain registry, reputation, and micropayments on Solana.
-              </p>
-              <p className="text-text-tertiary text-xs font-mono mt-4">
-                Program: 4sNnsVk...wcAb
               </p>
             </div>
             <div>
@@ -198,7 +191,7 @@ function App() {
             </div>
           </div>
           <div className="border-t border-border mt-8 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-text-tertiary">
-            <span>© 2025 Agent Bazaar. Built on Solana.</span>
+            <span>© 2026 Agent Bazaar. Built on Solana.</span>
             <div className="flex items-center gap-6">
               <span>{stats.totalAgents} agents registered</span>
               <span>${(stats.totalVolume / 1000000).toFixed(2)}M volume</span>

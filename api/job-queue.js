@@ -66,8 +66,8 @@ function createJob(serviceId, agentId, input, paymentInfo) {
     createdAt: Date.now(),
     startedAt: null,
     completedAt: null,
-    // Access control: only the original payer can fetch results
-    accessToken: paymentInfo?.signature || crypto.randomBytes(16).toString('hex'),
+    // SECURITY: Always use cryptographic random token (never derive from payment signature)
+    accessToken: crypto.randomBytes(32).toString('hex'),
     // Webhook URL for push notification (optional)
     webhookUrl: input?.webhookUrl || null,
     // Result content type (set by agent when completing)

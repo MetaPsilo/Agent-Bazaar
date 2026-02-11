@@ -55,7 +55,7 @@
 **Severity:** MEDIUM  
 **File:** `programs/agent_bazaar/src/lib.rs`  
 **Issue:** The `unique_raters` field increments on every feedback submission, even from the same rater. The feedback PDA seeds (`agent_id + rater + timestamp`) prevent duplicate feedback at the same second, but the same rater can submit multiple feedbacks across different seconds.  
-**True fix:** Would require a separate PDA per (agent, rater) pair — adds ~0.002 SOL rent per unique rater. Documented as known limitation for hackathon.
+**True fix:** Added `RaterState` PDA per (agent, rater) pair with 1-hour cooldown. Tracks `feedback_count` per rater — `unique_raters` only increments on first feedback from each wallet.
 
 ### 8. `safePreparedStatement` Validation Theater
 **Severity:** LOW  
@@ -81,12 +81,13 @@
 
 ## ⚠️ Known Limitations (Hackathon Scope)
 
-1. **No wallet signature auth on API:** The API trusts `owner` field in request body. Production should require ed25519 signature proof for all write operations.
+1. ~~**No wallet signature auth on API**~~ → **FIXED:** Ed25519 signature verification added for agent updates and feedback submissions.
 2. **Demo mode in development:** `NODE_ENV=development` accepts fake payment signatures. Must NEVER run in production with this env.
 3. **Single-server SQLite:** Not horizontally scalable. Production should use PostgreSQL or similar.
 4. **No replay protection on access tokens:** A captured access token can be reused. Production should add nonce/expiry.
 5. **Indexer trusts RPC data:** No independent verification of on-chain data integrity. A malicious RPC could feed false data.
 6. **Frontend wallet connection is simulated:** Phantom/Solflare buttons are demo-only.
+7. **`amount_paid` is self-reported:** No on-chain verification against actual SPL token transfers. This is an intentional design decision — no cap on `amount_paid`. Production should require an actual SPL transfer instruction.
 
 ---
 
@@ -97,7 +98,7 @@
 ### 🔴 CRITICAL — Transaction Replay Attack
 **File:** `api/x402-facilitator.js`  
 **Attack:** Pay once, call service unlimited times by replaying the same tx signature. The x402 middleware verified the on-chain tx but never recorded it as used.  
-**Fix:** Created `payment-cache.js` — in-memory signature cache with TTL eviction. Every verified signature (including demo sigs) is recorded and checked before acceptance. Production should use Redis.
+**Fix:** Created `payment-cache.js` — SQLite-backed signature cache with in-memory fast-path and 7-day TTL eviction. Every verified signature (including demo sigs) is recorded and checked before acceptance. Persists across server restarts.
 
 ### 🔴 CRITICAL — TOKEN_SECRET Regenerated Per-Request
 **File:** `api/x402-facilitator.js`  
@@ -112,7 +113,7 @@
 ### 🔴 HIGH — Volume Inflation Attack
 **File:** `api/server.js` — `POST /feedback`  
 **Attack:** `amountPaid` is user-supplied with no verification. Send `{"amountPaid": 999999999999}` to inflate an agent's total volume to appear like a massive earner. Manipulates leaderboard rankings.  
-**Fix:** Capped at 1000 USDC max per feedback. In production, must cross-reference against actual on-chain tx amount.
+**Note:** `amount_paid` is intentionally uncapped (Dan's design decision). The API now requires Ed25519 signature verification to prevent anonymous spam, but volume inflation from legitimate wallets remains possible. Production should cross-reference against actual on-chain tx amount.
 
 ### 🟡 MEDIUM — WebSocket IP Spoofing
 **File:** `api/server.js`  
@@ -146,7 +147,7 @@
 ### 🔴 CRITICAL — On-Chain Volume Inflation (Program Level)
 **File:** `programs/agent_bazaar/src/lib.rs` — `submit_feedback`  
 **Attack:** `amount_paid` instruction parameter is trusted with no on-chain verification. No SPL token transfer occurs in the instruction. An attacker calls `submit_feedback` with `amount_paid = u64::MAX` to make their agent appear to have processed billions in volume.  
-**Fix:** Capped `amount_paid` to 1,000,000,000 (1000 USDC). Added `AmountTooLarge` error. Production should require an actual SPL token transfer instruction within the same transaction.
+**Note:** An `amount_paid` cap was initially added but was **intentionally removed** — there is no maximum limit on `amount_paid`. This is a deliberate design decision. Production should require an actual SPL token transfer instruction within the same transaction to verify amounts.
 
 ### 🔴 HIGH — No Governance / Authority Recovery
 **File:** `programs/agent_bazaar/src/lib.rs`  
@@ -262,6 +263,10 @@
 | Round 2 | 8 | 3 | 1 | 3 | 1 |
 | Round 3 | 10 | 2 | 1 | 5 | 2 |
 | Round 4 | 9 | 1 | 2 | 5 | 1 |
-| **Total** | **35** | **9** | **7** | **16** | **5** |
+| Round 5 | 29 | 3 | 7 | 8 | 6 (+5 info) |
+| Round 6 | 14 | 4 | 5 | 3 | 2 |
+| **Total** | **78** | **16** | **17** | **27** | **13** (+5 info) |
 
-All issues either fixed or documented with mitigation path. 4 rounds of adversarial testing across on-chain program, API server, payment system, frontend, indexer, and infrastructure. The codebase is hardened well beyond typical hackathon submissions.
+All issues either fixed or documented with mitigation path. 6 rounds of adversarial testing across on-chain program, API server, payment system, frontend, indexer, and infrastructure. The codebase is hardened well beyond typical hackathon submissions.
+
+See also: [AUDIT-ROUND5.md](AUDIT-ROUND5.md) and [BLACKHAT-AUDIT.md](BLACKHAT-AUDIT.md) for detailed findings from rounds 5 and 6.

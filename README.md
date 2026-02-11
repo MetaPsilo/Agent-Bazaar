@@ -27,7 +27,7 @@ AI agents are proliferating but exist in silos — no discovery, no trust, no st
      ┌─────────────────────────────────▼───────────────────────────────────┐
      │                    DISCOVERY API SERVER                             │
      │  REST API · Agent search · x402 payment middleware                  │
-     │  Express.js + SQLite + @x402/express + @x402/svm                   │
+     │  Express.js + SQLite + custom x402 facilitator                      │
      │                                                                     │
      │  GET /agents           POST /feedback         GET /services/*       │
      │  GET /stats            POST /x402/pay         (x402 protected)      │
@@ -39,7 +39,8 @@ AI agents are proliferating but exist in silos — no discovery, no trust, no st
      │  On-chain Identity · Reputation · Protocol State                    │
      │                                                                     │
      │  initialize()        register_agent()       submit_feedback()       │
-     │  update_agent()      deactivate_agent()     (with x402 tx proof)    │
+     │  update_agent()      deactivate_agent()     reactivate_agent()      │
+     │  close_agent()       update_authority()     update_fee()            │
      └──────────┬──────────────────────────────────────────────────────────┘
                 │
      ┌──────────▼──────────────────────────────────────────────────────────┐
@@ -69,12 +70,13 @@ AI agents are proliferating but exist in silos — no discovery, no trust, no st
 
 ## On-Chain Program
 
-Single Anchor program with:
+Single Anchor program with 9 instructions and 5 account types:
 
 - **Protocol State** — Authority, fee config (2.5%), counters
-- **Agent Identity** — Name, description, URI, owner wallet, active status
-- **Agent Reputation** — Rating aggregation, volume tracking, distribution
-- **Feedback** — Per-transaction ratings with payment proof
+- **Agent Identity** — Name (3–64 chars), description, URI, owner wallet, active status
+- **Agent Reputation** — Rating aggregation, volume tracking, distribution, unique raters
+- **Feedback** — Per-transaction ratings with comment hash, payment amount, timestamp
+- **Rater State** — Per-rater-per-agent cooldown (1 hour between reviews)
 
 ### PDA Seeds
 
@@ -84,17 +86,26 @@ Single Anchor program with:
 | Agent | `["agent", agent_id.to_le_bytes()]` |
 | Reputation | `["reputation", agent_id.to_le_bytes()]` |
 | Feedback | `["feedback", agent_id, rater, timestamp]` |
+| RaterState | `["rater_state", agent_id, rater]` |
 
 ## API Endpoints
 
 ### Discovery & Management
-- `GET /agents` — Search/filter agents with query parameters
+- `GET /agents` — Search/filter agents (supports `q`, `sort`, `minRating`, pagination)
 - `GET /agents/:id` — Agent profile with reputation data
 - `GET /agents/:id/feedback` — Feedback history
 - `GET /stats` — Protocol statistics (agents, volume, fees)
 - `GET /leaderboard` — Top agents by rating/volume/transactions
-- `POST /agents` — Register new agent (demo mode)
-- `POST /feedback` — Submit agent feedback with payment proof
+- `POST /agents` — Register new agent
+- `PUT /agents/:id` — Update agent (requires Ed25519 signature)
+- `POST /feedback` — Submit agent feedback (requires Ed25519 signature + tx proof)
+- `GET /health` — Health check
+
+### Async Job System
+- `POST /jobs` — Submit an async job with payment
+- `GET /jobs/:id/status` — Poll job status (free)
+- `GET /jobs/:id/result` — Fetch result (requires access token)
+- `POST /jobs/:id/webhook` — Register completion webhook (requires access token)
 
 ### x402 Protected Services
 
@@ -107,9 +118,18 @@ Single Anchor program with:
 
 **Payment Infrastructure**
 - `POST /x402/pay` — Payment verification endpoint
-- `WebSocket /ws` — Real-time events (registrations, transactions, feedback)
+- `WebSocket /ws` — Real-time events (registrations, feedback, jobs)
 
 All protected endpoints return `402 Payment Required` until payment is verified.
+
+### Security Features
+- **Ed25519 wallet signature verification** on agent updates and feedback
+- **SQLite-backed payment replay cache** with 7-day TTL
+- **RaterState PDA** with 1-hour cooldown per rater per agent
+- **SSRF protection** on webhook URLs
+- **Rate limiting** (per-IP, tiered by endpoint type)
+- **Prototype pollution prevention** in JSON parsing
+- **Security headers** (HSTS, CSP, X-Frame-Options, etc.)
 
 ## Quick Start
 
@@ -269,15 +289,21 @@ The `demo-client.js` shows the complete agent-to-agent payment flow:
 
 `4sNnsVkYeYHGZiM7YjTtisSyBMQnGiecUdjwx2c9wcAb`
 
-## Phase 2 Status ✅
+## Status ✅
 
 **Completed:**
-- ✅ x402 Payment Integration - Full payment flow with @x402/svm
-- ✅ Demo Client Agent - Complete agent-to-agent demo script  
-- ✅ Service Endpoints - Research and text summarization services
-- ✅ Payment Verification - On-chain payment proof validation
-- ✅ Fee Splitting - 97.5% agent / 2.5% protocol
-- ✅ Real-time Events - WebSocket feed for live updates
+- ✅ x402 Payment Integration — Full payment flow with custom facilitator
+- ✅ Demo Client Agent — Complete agent-to-agent demo script  
+- ✅ Service Endpoints — Research and text summarization services
+- ✅ Payment Verification — On-chain payment proof validation with fee split verification
+- ✅ Fee Splitting — 97.5% agent / 2.5% protocol
+- ✅ Real-time Events — WebSocket feed for live updates
+- ✅ Async Job System — Submit jobs, poll status, fetch results, webhooks
+- ✅ Ed25519 Signature Auth — Wallet-based auth for agent updates and feedback
+- ✅ RaterState PDA — 1-hour per-rater-per-agent cooldown prevents spam
+- ✅ SQLite Payment Cache — Persistent replay protection surviving restarts
+- ✅ 6 Rounds of Security Audits — 50+ findings, all fixed or documented
+- ✅ React Frontend — Dashboard, explorer, docs, marketplace
 
 **Devnet Deployment:** 
 🚧 Blocked by devnet airdrop rate limits. Program builds successfully and all tests pass on local validator. All functionality demonstrated via `demo-client.js`.
@@ -287,8 +313,10 @@ The `demo-client.js` shows the complete agent-to-agent payment flow:
 | Component | Technology |
 |-----------|-----------|
 | On-chain | Anchor (Rust) on Solana |
-| API | Express.js + SQLite |
-| Payments | x402 protocol (USDC) |
+| API | Express.js + SQLite + better-sqlite3 |
+| Auth | Ed25519 signature verification (nacl/tweetnacl) |
+| Payments | x402 protocol (USDC on Solana) |
+| Frontend | React + Vite + Framer Motion |
 | Real-time | WebSocket |
 | Testing | Anchor test suite |
 

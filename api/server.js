@@ -160,7 +160,25 @@ wss.on("connection", (ws, req) => {
     console.error("WebSocket error:", error);
     wsClients.delete(ws);
   });
+
+  ws.on("pong", () => {
+    const meta = wsClients.get(ws);
+    if (meta) meta.alive = true;
+  });
 });
+
+// Ping/pong to detect dead connections
+const wsHeartbeat = setInterval(() => {
+  for (const [ws, meta] of wsClients) {
+    if (meta.alive === false) {
+      wsClients.delete(ws);
+      ws.terminate();
+      continue;
+    }
+    meta.alive = false;
+    ws.ping();
+  }
+}, 30000);
 
 function broadcast(event) {
   if (wsClients.size === 0) return;
@@ -242,7 +260,7 @@ app.get("/services/text-summary", x402Protect("25000", "HkrtQ8FGS2rkhCC11Z9gHaeM
 
 // POST /jobs - Submit an async job (requires x402 payment)
 // Client sends input data + payment proof, gets back a job ID to poll
-app.post("/jobs", express.json({ limit: '10mb' }), (req, res) => {
+app.post("/jobs", paymentRateLimit, (req, res) => {
   try {
     const { serviceId, agentId, input, paymentProof } = req.body;
 
@@ -260,7 +278,7 @@ app.post("/jobs", express.json({ limit: '10mb' }), (req, res) => {
     // Simulate async processing for demo services
     simulateJobProcessing(job);
 
-    broadcast({ type: 'job_created', jobId: job.id, serviceId, timestamp: Date.now() });
+    broadcast({ type: 'job_created', serviceId, timestamp: Date.now() });
 
     res.json({
       jobId: job.id,
@@ -289,6 +307,16 @@ app.get("/jobs/:id/result", (req, res) => {
   const job = getJob(req.params.id);
   if (!job) {
     return res.status(404).json({ error: "Job not found" });
+  }
+
+  // SECURITY: Verify access token to prevent unauthorized result access
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: "Authorization required. Include Bearer <accessToken> header." });
+  }
+  const providedToken = authHeader.substring(7);
+  if (providedToken !== job.accessToken) {
+    return res.status(403).json({ error: "Invalid access token" });
   }
 
   if (job.status !== STATUS.COMPLETED) {
@@ -327,12 +355,49 @@ app.post("/jobs/:id/webhook", (req, res) => {
   if (!url) {
     return res.status(400).json({ error: "Missing webhook url" });
   }
-  // Basic URL validation
+  // URL validation with comprehensive SSRF protection
   try {
     const parsed = new URL(url);
-    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('bad protocol');
+    if (parsed.protocol !== 'https:') {
+      return res.status(400).json({ error: "Webhook URL must use HTTPS" });
+    }
+    // Reject URLs with auth info (user:pass@host)
+    if (parsed.username || parsed.password) {
+      return res.status(400).json({ error: "Webhook URL cannot contain credentials" });
+    }
+    // Block private/internal IPs (comprehensive)
+    const hostname = parsed.hostname.toLowerCase();
+    // Block localhost variants
+    if (hostname === 'localhost' || hostname === '0.0.0.0' || hostname === '127.0.0.1' ||
+        hostname === '[::1]' || hostname === '[0:0:0:0:0:0:0:1]' ||
+        hostname.endsWith('.localhost') || hostname === '0177.0.0.1' ||
+        hostname === '0x7f000001' || hostname === '0x7f.0.0.1' ||
+        // Block private ranges
+        hostname.startsWith('10.') || hostname.startsWith('192.168.') ||
+        hostname.startsWith('169.254.') ||
+        /^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname) ||
+        // Block IPv6 mapped IPv4
+        hostname.includes('::ffff:') ||
+        // Block cloud metadata endpoints
+        hostname === 'metadata.google.internal' ||
+        hostname === 'metadata.internal' ||
+        // Block any IP address (only allow domain names)
+        /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
+        /^\[/.test(hostname)) {
+      return res.status(400).json({ error: "Webhook URL cannot target private/internal networks or IP addresses" });
+    }
   } catch {
     return res.status(400).json({ error: "Invalid webhook URL" });
+  }
+  
+  // SECURITY: Require access token to register webhooks (prevent unauthorized registration)
+  const webhookAuth = req.headers['authorization'];
+  if (!webhookAuth || !webhookAuth.startsWith('Bearer ')) {
+    return res.status(401).json({ error: "Authorization required to register webhooks" });
+  }
+  const webhookToken = webhookAuth.substring(7);
+  if (webhookToken !== job.accessToken) {
+    return res.status(403).json({ error: "Invalid access token" });
   }
   job.webhookUrl = url;
   res.json({ success: true, message: "Webhook registered" });
@@ -348,7 +413,7 @@ function simulateJobProcessing(job) {
   // Start processing after a short delay
   setTimeout(() => {
     updateJobProgress(job.id, 10, 'Processing started');
-    broadcast({ type: 'job_progress', jobId: job.id, progress: 10 });
+    broadcast({ type: 'job_progress', progress: 10 });
   }, 500);
 
   switch (serviceId) {
@@ -369,7 +434,7 @@ function simulateJobProcessing(job) {
           contentType: format === 'pdf' ? 'application/pdf' : 'text/markdown',
           filename: `${title.toLowerCase().replace(/\s+/g, '-')}.${format === 'pdf' ? 'pdf' : 'md'}`,
         });
-        broadcast({ type: 'job_completed', jobId: job.id, serviceId });
+        broadcast({ type: 'job_completed', serviceId });
       }, 5000);
       break;
     }
@@ -399,7 +464,7 @@ function simulateJobProcessing(job) {
           confidence: 0.85,
           wordCount: 2500,
         });
-        broadcast({ type: 'job_completed', jobId: job.id, serviceId });
+        broadcast({ type: 'job_completed', serviceId });
       }, 16000);
       break;
     }
@@ -422,7 +487,7 @@ function simulateJobProcessing(job) {
           summary: 'Overall code quality is good with minor improvements suggested.',
           linesAnalyzed: typeof code === 'string' ? code.split('\n').length : 0,
         });
-        broadcast({ type: 'job_completed', jobId: job.id, serviceId });
+        broadcast({ type: 'job_completed', serviceId });
       }, 7000);
       break;
     }
@@ -437,7 +502,7 @@ function simulateJobProcessing(job) {
           input: Object.keys(input || {}),
           timestamp: new Date().toISOString(),
         });
-        broadcast({ type: 'job_completed', jobId: job.id, serviceId });
+        broadcast({ type: 'job_completed', serviceId });
       }, 4000);
     }
   }
@@ -602,18 +667,11 @@ app.post("/feedback", [
   validateAmount,
   body('comment').optional().trim().isLength({ max: 1000 }).withMessage('Comment too long')
     .customSanitizer(value => value ? value.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') : value),
-  body('txSignature').optional().custom((value) => {
-    if (!value) return true; // Optional field
-    // In development mode, allow demo signatures
-    if (process.env.NODE_ENV === 'development' && value.startsWith('demo_')) {
-      return true;
-    }
-    // Otherwise require proper signature length
-    if (value.length < 32 || value.length > 128) {
-      throw new Error('Invalid transaction signature');
-    }
-    return true;
-  }),
+  body('rater').isLength({ min: 32, max: 44 }).matches(/^[1-9A-HJ-NP-Za-km-z]+$/)
+    .withMessage('rater must be a valid Solana public key'),
+  body('txSignature').isLength({ min: 32, max: 128 }).withMessage('Transaction signature required'),
+  body('authSignature').isLength({ min: 32, max: 256 }).withMessage('Wallet signature required for authentication'),
+  body('authMessage').isLength({ min: 10, max: 256 }).withMessage('Signed message required'),
   handleValidationErrors
 ], (req, res) => {
   try {
@@ -629,22 +687,48 @@ app.post("/feedback", [
       return res.status(400).json({ error: "Agent is not active" });
     }
 
-    // SECURITY: Prevent self-rating (reputation manipulation)
-    // Check both explicit rater field AND txSignature sender if available
-    const { rater: raterAddress } = req.body;
+    // SECURITY: Verify ed25519 signature proving caller controls rater wallet
+    const { rater: raterAddress, authSignature: feedbackAuthSig, authMessage: feedbackAuthMsg } = req.body;
+    
+    if (!feedbackAuthSig || !feedbackAuthMsg) {
+      return res.status(403).json({ 
+        error: "Wallet signature required. Sign a message containing 'feedback:<agentId>:<timestamp>' with your rater wallet.",
+      });
+    }
+
+    try {
+      const { PublicKey } = require('@solana/web3.js');
+      const nacl = require('tweetnacl');
+      const bs58 = require('bs58');
+      const raterPubkey = new PublicKey(raterAddress);
+      const messageBytes = new TextEncoder().encode(feedbackAuthMsg);
+      const signatureBytes = bs58.decode(feedbackAuthSig);
+      const isValid = nacl.sign.detached.verify(messageBytes, signatureBytes, raterPubkey.toBytes());
+      if (!isValid) {
+        return res.status(403).json({ error: "Invalid wallet signature" });
+      }
+      // Verify message contains the correct agent ID
+      if (!feedbackAuthMsg.includes(`feedback:${agentId}:`)) {
+        return res.status(403).json({ error: "Signature message must contain the agent ID" });
+      }
+      // Verify timestamp is recent (within 5 minutes)
+      const msgParts = feedbackAuthMsg.split(':');
+      const msgTimestamp = parseInt(msgParts[2]);
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (isNaN(msgTimestamp) || Math.abs(nowSec - msgTimestamp) > 300) {
+        return res.status(403).json({ error: "Signature expired or timestamp invalid" });
+      }
+    } catch (sigError) {
+      return res.status(403).json({ error: "Signature verification failed: " + sigError.message });
+    }
+
+    // SECURITY: Prevent self-rating (now verified via cryptographic proof)
     if (raterAddress === agent.owner) {
       return res.status(403).json({ error: "Cannot rate your own agent" });
     }
 
-    // SECURITY: In production, require a valid tx signature to prevent volume inflation
-    if (process.env.NODE_ENV !== 'development' && !txSignature) {
-      return res.status(400).json({ error: "Transaction signature required for feedback" });
-    }
-
-    // SECURITY: Cap amountPaid to prevent volume inflation attacks
-    // In production, this should be verified against the actual on-chain transaction
-    const maxAmount = 1000000000; // 1000 USDC max per feedback
-    const sanitizedAmount = Math.min(Math.max(0, amountPaid || 0), maxAmount);
+    // Note: amount_paid is self-reported. In production, verify against actual on-chain SPL transfer.
+    const sanitizedAmount = Math.max(0, amountPaid || 0);
 
     const commentHash = comment ? require("crypto").createHash("sha256").update(comment).digest("hex") : null;
     const now = Math.floor(Date.now() / 1000);
@@ -772,17 +856,46 @@ app.put("/agents/:id", [
       return res.status(404).json({ error: "Agent not found" });
     }
 
-    // SECURITY: Verify ownership before allowing updates
-    // NOTE: In production, this MUST use ed25519 signature verification.
-    // For hackathon demo, we verify the owner pubkey matches AND require
-    // a signature of the update payload. Without wallet integration, we
-    // at minimum verify the claimed owner matches the stored owner.
-    const { owner: requestOwner, authSignature } = req.body;
+    // SECURITY: Verify ownership via ed25519 signature
+    const { owner: requestOwner, authSignature, authMessage } = req.body;
     if (!requestOwner || existing.owner !== requestOwner) {
       return res.status(403).json({ error: "Unauthorized: only the agent owner can update" });
     }
-    // In production: verify authSignature is a valid ed25519 sig of the request body
-    // signed by the owner's private key. For hackathon, owner pubkey match is sufficient.
+    
+    // Require signature proof of ownership
+    if (!authSignature || !authMessage) {
+      return res.status(403).json({ 
+        error: "Signature required. Sign a message containing the agent ID and current timestamp with your owner wallet.",
+        required: { authMessage: "update:<agentId>:<timestamp>", authSignature: "base58-encoded ed25519 signature" }
+      });
+    }
+    
+    // Verify ed25519 signature
+    try {
+      const { PublicKey } = require('@solana/web3.js');
+      const nacl = require('tweetnacl');
+      const bs58 = require('bs58');
+      const ownerPubkey = new PublicKey(requestOwner);
+      const messageBytes = new TextEncoder().encode(authMessage);
+      const signatureBytes = bs58.decode(authSignature);
+      const isValid = nacl.sign.detached.verify(messageBytes, signatureBytes, ownerPubkey.toBytes());
+      if (!isValid) {
+        return res.status(403).json({ error: "Invalid signature" });
+      }
+      // Verify message contains the correct agent ID
+      if (!authMessage.includes(`update:${agentId}:`)) {
+        return res.status(403).json({ error: "Signature message must contain the agent ID" });
+      }
+      // Verify timestamp is recent (within 5 minutes)
+      const msgParts = authMessage.split(':');
+      const msgTimestamp = parseInt(msgParts[2]);
+      const now = Math.floor(Date.now() / 1000);
+      if (isNaN(msgTimestamp) || Math.abs(now - msgTimestamp) > 300) {
+        return res.status(403).json({ error: "Signature expired or timestamp invalid" });
+      }
+    } catch (sigError) {
+      return res.status(403).json({ error: "Signature verification failed" });
+    }
 
     // Build update query dynamically
     const updates = [];

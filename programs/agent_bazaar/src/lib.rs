@@ -7,6 +7,8 @@ pub const MAX_DESC_LEN: usize = 256;
 pub const MAX_URI_LEN: usize = 256;
 pub const MAX_CATEGORIES: usize = 5;
 pub const MAX_CATEGORY_LEN: usize = 32;
+pub const MIN_NAME_LEN: usize = 3;
+pub const MIN_FEEDBACK_INTERVAL: i64 = 3600; // 1 hour between reviews from same rater per agent
 
 #[program]
 pub mod agent_bazaar {
@@ -32,6 +34,7 @@ pub mod agent_bazaar {
         agent_uri: String,
         categories: Vec<String>,
     ) -> Result<()> {
+        require!(name.len() >= MIN_NAME_LEN, ErrorCode::NameTooShort);
         require!(name.len() <= MAX_NAME_LEN, ErrorCode::NameTooLong);
         require!(description.len() <= MAX_DESC_LEN, ErrorCode::DescriptionTooLong);
         require!(agent_uri.len() <= MAX_URI_LEN, ErrorCode::UriTooLong);
@@ -162,10 +165,6 @@ pub mod agent_bazaar {
             ErrorCode::SelfRating
         );
 
-        // SECURITY: Cap amount_paid to prevent volume inflation
-        // Real payment verification would require SPL token transfer in the instruction
-        require!(amount_paid <= 1_000_000_000, ErrorCode::AmountTooLarge); // Max 1000 USDC
-        
         let clock = Clock::get()?;
         require!(
             timestamp <= clock.unix_timestamp,
@@ -175,6 +174,21 @@ pub mod agent_bazaar {
             timestamp >= clock.unix_timestamp - 86400, // Max 24h old
             ErrorCode::TimestampTooOld
         );
+
+        // SECURITY: Enforce per-rater cooldown to prevent sybil spam from same wallet
+        let rater_state = &mut ctx.accounts.rater_state;
+        if rater_state.last_feedback_at > 0 {
+            require!(
+                clock.unix_timestamp - rater_state.last_feedback_at >= MIN_FEEDBACK_INTERVAL,
+                ErrorCode::FeedbackTooFrequent
+            );
+        }
+        rater_state.rater = ctx.accounts.rater.key();
+        rater_state.agent_id = agent_id;
+        rater_state.last_feedback_at = clock.unix_timestamp;
+        rater_state.feedback_count = rater_state.feedback_count.checked_add(1)
+            .ok_or(ErrorCode::ArithmeticOverflow)?;
+        rater_state.bump = ctx.bumps.rater_state;
 
         let feedback = &mut ctx.accounts.feedback;
         feedback.agent_id = agent_id;
@@ -196,12 +210,12 @@ pub mod agent_bazaar {
         rep.rating_distribution[(rating - 1) as usize] = rep.rating_distribution[(rating - 1) as usize]
             .checked_add(1).ok_or(ErrorCode::ArithmeticOverflow)?;
         rep.last_rated_at = timestamp;
-        // NOTE: unique_raters is approximate — same rater with different timestamps
-        // can increment this. True uniqueness would require a per-rater PDA (gas-expensive).
-        // The feedback PDA seeds include rater+timestamp, preventing duplicate feedback
-        // for the same rater at the same second, but not across different timestamps.
-        rep.unique_raters = rep.unique_raters.checked_add(1)
-            .ok_or(ErrorCode::ArithmeticOverflow)?;
+        // SECURITY: Only increment unique_raters on first feedback from this rater
+        // (rater_state.feedback_count was already incremented above, so ==1 means first time)
+        if rater_state.feedback_count == 1 {
+            rep.unique_raters = rep.unique_raters.checked_add(1)
+                .ok_or(ErrorCode::ArithmeticOverflow)?;
+        }
 
         let state = &mut ctx.accounts.protocol_state;
         state.total_transactions = state.total_transactions.checked_add(1)
@@ -343,6 +357,18 @@ pub struct SubmitFeedback<'info> {
         bump
     )]
     pub feedback: Account<'info, Feedback>,
+    #[account(
+        init_if_needed,
+        payer = rater,
+        space = 8 + RaterState::INIT_SPACE,
+        seeds = [
+            b"rater_state",
+            agent_id.to_le_bytes().as_ref(),
+            rater.key().as_ref(),
+        ],
+        bump
+    )]
+    pub rater_state: Account<'info, RaterState>,
     #[account(mut)]
     pub rater: Signer<'info>,
     pub system_program: Program<'info, System>,
@@ -390,6 +416,16 @@ pub struct AgentReputation {
     pub unique_raters: u64,
     pub rating_distribution: [u64; 5],
     pub last_rated_at: i64,
+    pub bump: u8,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct RaterState {
+    pub rater: Pubkey,
+    pub agent_id: u64,
+    pub last_feedback_at: i64,
+    pub feedback_count: u64,
     pub bump: u8,
 }
 
@@ -463,6 +499,8 @@ pub enum ErrorCode {
     AgentAlreadyActive,
     #[msg("Cannot rate your own agent")]
     SelfRating,
-    #[msg("Amount too large: max 1,000,000,000 lamports (1000 USDC)")]
-    AmountTooLarge,
+    #[msg("Name too short: min 3 chars")]
+    NameTooShort,
+    #[msg("Feedback too frequent: wait at least 1 hour between reviews for the same agent")]
+    FeedbackTooFrequent,
 }

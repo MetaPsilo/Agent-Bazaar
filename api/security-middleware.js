@@ -143,7 +143,7 @@ const corsConfig = {
 
 // SQL injection prevention - prepared statement wrapper
 // Note: better-sqlite3 uses prepared statements natively which prevents SQL injection.
-// This wrapper adds a param count sanity check.
+// This wrapper adds error handling around db.prepare() calls.
 const safePreparedStatement = (db, query, params = []) => {
   try {
     return db.prepare(query);
@@ -159,7 +159,7 @@ const securityHeaders = (req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; object-src 'none';");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; connect-src 'self' wss: ws:;");
   next();
 };
 

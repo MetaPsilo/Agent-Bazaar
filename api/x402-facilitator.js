@@ -267,7 +267,7 @@ async function handlePaymentSubmission(req, res) {
 
     // SECURITY: Validate amount is a positive integer
     const parsedAmount = parseInt(amount);
-    if (isNaN(parsedAmount) || parsedAmount <= 0 || parsedAmount > 1_000_000_000) {
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
       return res.status(400).json({ error: "Invalid amount" });
     }
 

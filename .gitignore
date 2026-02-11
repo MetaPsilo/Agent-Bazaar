@@ -12,6 +12,8 @@ test-ledger/
 
 # Database
 api/bazaar.db
+api/bazaar.db-shm
+api/bazaar.db-wal
 
 # OS
 .DS_Store
