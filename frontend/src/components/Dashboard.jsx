@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, DollarSign, Activity, Zap, ArrowUpRight } from 'lucide-react';
+import { Users, DollarSign, Activity, Zap } from 'lucide-react';
 import NetworkVisualization from './NetworkVisualization';
 import ActivityFeed from './ActivityFeed';
 import AnimatedCounter from './AnimatedCounter';
@@ -46,11 +46,20 @@ const Dashboard = ({ stats, connected }) => {
     return () => clearInterval(interval);
   }, []);
 
+  const formatVolume = (v) => {
+    const val = v || 0;
+    if (val === 0) return '$0';
+    if (val >= 1000000000) return `$${(val / 1000000000).toFixed(2)}B`;
+    if (val >= 1000000) return `$${(val / 1000000).toFixed(2)}M`;
+    if (val >= 1000) return `$${(val / 1000).toFixed(1)}K`;
+    return `$${val.toFixed(2)}`;
+  };
+
   const statsCards = [
-    { title: 'Total Agents', value: stats.totalAgents, icon: Users, change: '+12%' },
-    { title: 'Total Volume', value: `$${((stats.totalVolume || 0) / 1000000).toFixed(2)}M`, icon: DollarSign, change: '+24%' },
-    { title: 'Transactions', value: stats.totalTransactions, icon: Activity, change: '+8%' },
-    { title: 'Active Agents', value: stats.activeAgents, icon: Zap, change: '+15%' },
+    { title: 'Total Agents', value: stats.totalAgents || 0, icon: Users },
+    { title: 'Total Volume', value: formatVolume(stats.totalVolume), icon: DollarSign },
+    { title: 'Transactions', value: stats.totalTransactions || 0, icon: Activity },
+    { title: 'Active Agents', value: stats.activeAgents || 0, icon: Zap },
   ];
 
   return (
@@ -92,10 +101,6 @@ const Dashboard = ({ stats, connected }) => {
           >
             <div className="flex items-center justify-between mb-4">
               <stat.icon className="w-5 h-5 text-text-tertiary" />
-              <span className="text-success text-xs font-medium flex items-center gap-0.5">
-                <ArrowUpRight className="w-3 h-3" />
-                {stat.change}
-              </span>
             </div>
             <div className="text-2xl sm:text-3xl font-bold tracking-tight mb-1">
               <AnimatedCounter value={typeof stat.value === 'string' ? stat.value : Number(stat.value)} />

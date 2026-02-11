@@ -198,7 +198,7 @@ function App() {
             <span>© 2026 Agent Bazaar. Built on Solana.</span>
             <div className="flex items-center gap-6">
               <span>{stats.totalAgents} agents registered</span>
-              <span>${((stats.totalVolume || 0) / 1000000).toFixed(2)}M volume</span>
+              <span>{stats.totalVolume ? `$${(stats.totalVolume / 1000000).toFixed(2)}M` : '$0'} volume</span>
             </div>
           </div>
         </div>
