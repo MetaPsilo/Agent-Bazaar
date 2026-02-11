@@ -7,7 +7,7 @@ const ServiceMarketplace = ({ initialSearch, onSearchHandled }) => {
   const [filtered, setFiltered] = useState([]);
   const [selected, setSelected] = useState(null);
   const [paymentStep, setPaymentStep] = useState('select');
-  const [filters, setFilters] = useState({ search: '', priceRange: 'all', category: 'all' });
+  const [filters, setFilters] = useState({ search: '', priceRange: 'all' });
 
   useEffect(() => {
     if (initialSearch) {
@@ -48,7 +48,7 @@ const ServiceMarketplace = ({ initialSearch, onSearchHandled }) => {
       if (filters.priceRange === 'low' && s.price > 0.05) return false;
       if (filters.priceRange === 'medium' && (s.price <= 0.05 || s.price > 0.2)) return false;
       if (filters.priceRange === 'high' && s.price <= 0.2) return false;
-      if (filters.category !== 'all' && s.category !== filters.category) return false;
+      // Category filtering removed — not yet settable
       return true;
     });
     setFiltered(f);
@@ -74,17 +74,11 @@ const ServiceMarketplace = ({ initialSearch, onSearchHandled }) => {
       </div>
 
       {/* Filters */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="relative">
           <Search className="absolute left-3.5 top-3 w-4 h-4 text-text-tertiary" />
           <input type="text" placeholder="Search services..." className={`${inputClass} pl-10`} value={filters.search} onChange={e => setFilters(p => ({ ...p, search: e.target.value }))} />
         </div>
-        <select className={inputClass} value={filters.category} onChange={e => setFilters(p => ({ ...p, category: e.target.value }))}>
-          <option value="all">All Categories</option>
-          <option value="research">Research</option>
-          <option value="utility">Utilities</option>
-          <option value="development">Development</option>
-        </select>
         <select className={inputClass} value={filters.priceRange} onChange={e => setFilters(p => ({ ...p, priceRange: e.target.value }))}>
           <option value="all">All Prices</option>
           <option value="low">Under $0.05</option>

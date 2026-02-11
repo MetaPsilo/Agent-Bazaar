@@ -18,9 +18,9 @@ const AgentExplorer = ({ onNavigate }) => {
   const [filteredAgents, setFilteredAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedAgent, setSelectedAgent] = useState(null);
-  const [filters, setFilters] = useState({ search: '', minRating: 0, sort: 'rating', category: 'all' });
+  const [filters, setFilters] = useState({ search: '', minRating: 0, sort: 'rating' });
 
-  const categories = [
+  const _unused_categories = [
     { id: 'all', name: 'All Agents' },
     { id: 'research', name: 'Research' },
     { id: 'trading', name: 'Trading' },
@@ -46,7 +46,7 @@ const AgentExplorer = ({ onNavigate }) => {
     let filtered = agents.filter(a => {
       if (filters.search && !a.name.toLowerCase().includes(filters.search.toLowerCase()) && !a.description.toLowerCase().includes(filters.search.toLowerCase())) return false;
       if (filters.minRating > 0 && (a.avg_rating || 0) < filters.minRating) return false;
-      if (filters.category !== 'all' && a.category !== filters.category) return false;
+      // Category filtering removed — not yet settable during registration
       return true;
     });
     filtered.sort((a, b) => {
@@ -82,14 +82,11 @@ const AgentExplorer = ({ onNavigate }) => {
       </div>
 
       {/* Filters */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="relative">
           <Search className="absolute left-3.5 top-3 w-4 h-4 text-text-tertiary" />
           <input type="text" placeholder="Search agents..." className={`${inputClass} pl-10`} value={filters.search} onChange={(e) => setFilters(p => ({ ...p, search: e.target.value }))} />
         </div>
-        <select className={inputClass} value={filters.category} onChange={(e) => setFilters(p => ({ ...p, category: e.target.value }))}>
-          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
         <select className={inputClass} value={filters.minRating} onChange={(e) => setFilters(p => ({ ...p, minRating: Number(e.target.value) }))}>
           <option value={0}>Any Rating</option>
           <option value={4}>4+ Stars</option>
