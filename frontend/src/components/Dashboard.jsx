@@ -15,6 +15,12 @@ const Dashboard = ({ stats, connected }) => {
       .then(data => setLeaderboard(Array.isArray(data) ? data : []))
       .catch(console.error);
 
+    // Load recent activity history
+    fetch('/activity?limit=20')
+      .then(res => res.json())
+      .then(data => { if (Array.isArray(data)) setActivities(data.map(a => ({ ...a, id: a.id || a.timestamp, timestamp: (a.timestamp || 0) * 1000 }))); })
+      .catch(console.error);
+
     // Connect to WebSocket for live activity feed
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
@@ -38,8 +44,8 @@ const Dashboard = ({ stats, connected }) => {
   }, []);
 
   const formatVolume = (v) => {
-    const val = v || 0;
-    if (val === 0) return '$0';
+    const val = parseFloat(v) || 0;
+    if (val === 0) return '$0.00';
     if (val >= 1000000000) return `$${(val / 1000000000).toFixed(2)}B`;
     if (val >= 1000000) return `$${(val / 1000000).toFixed(2)}M`;
     if (val >= 1000) return `$${(val / 1000).toFixed(1)}K`;
@@ -123,7 +129,7 @@ const Dashboard = ({ stats, connected }) => {
           transition={{ delay: 0.4 }}
         >
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Live Feed</h2>
+            <h2 className="text-lg font-semibold">Recent Activity</h2>
             
           </div>
           <ActivityFeed activities={activities} />

@@ -911,10 +911,45 @@ app.get("/stats", async (req, res) => {
     
     const { rows: countRows } = await pool.query("SELECT COUNT(*) as c FROM agents WHERE active = 1");
     const activeAgents = parseInt(countRows[0].c);
+    const { rows: totalRows } = await pool.query("SELECT COUNT(*) as c FROM agents");
+    const totalAgents = parseInt(totalRows[0].c);
     
-    res.json({ ...stats, activeAgents });
+    res.json({ ...stats, total_agents: totalAgents, activeAgents });
   } catch (error) {
     console.error("Stats fetch error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// GET /activity - recent platform activity (registrations, payments, feedback)
+app.get("/activity", async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const activities = [];
+
+    // Recent registrations
+    const { rows: regs } = await pool.query(
+      "SELECT agent_id, name, registered_at FROM agents ORDER BY registered_at DESC LIMIT $1", [limit]
+    );
+    regs.forEach(r => activities.push({
+      type: 'registration', agent: r.name, agentId: r.agent_id, timestamp: r.registered_at
+    }));
+
+    // Recent feedback
+    const { rows: fbs } = await pool.query(
+      `SELECT f.agent_id, f.rating, f.rater, f.timestamp, a.name FROM feedback f 
+       JOIN agents a ON a.agent_id = f.agent_id ORDER BY f.timestamp DESC LIMIT $1`, [limit]
+    );
+    fbs.forEach(f => activities.push({
+      type: 'feedback', agent: f.name, agentId: f.agent_id, rating: f.rating, 
+      from: f.rater?.slice(0, 8) + '...', timestamp: f.timestamp
+    }));
+
+    // Sort by timestamp descending, return top N
+    activities.sort((a, b) => b.timestamp - a.timestamp);
+    res.json(activities.slice(0, limit));
+  } catch (error) {
+    console.error("Activity fetch error:", error);
     res.status(500).json({ error: "Database error" });
   }
 });

@@ -14,6 +14,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/activity': { target: 'http://localhost:3000', changeOrigin: true },
       '/agents': { target: 'http://localhost:3000', changeOrigin: true },
       '/stats': { target: 'http://localhost:3000', changeOrigin: true },
       '/leaderboard': { target: 'http://localhost:3000', changeOrigin: true },

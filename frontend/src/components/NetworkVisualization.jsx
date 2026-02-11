@@ -143,10 +143,8 @@ const NetworkVisualization = () => {
     const packetInterval = setInterval(spawnPacket, 600);
     for (let i = 0; i < 6; i++) spawnPacket();
 
-    const statusInterval = setInterval(() => {
-      const node = state.nodes[Math.floor(Math.random() * state.nodes.length)];
-      node.status = statuses[Math.floor(Math.random() * statuses.length)];
-    }, 3000);
+    // Nodes keep their initial status — no random flickering
+    const statusInterval = null;
 
     const activateInterval = setInterval(() => {
       const conn = state.connections[Math.floor(Math.random() * state.connections.length)];
