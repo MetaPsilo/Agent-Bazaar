@@ -456,6 +456,16 @@ app.get("/services/agent/:agentId/:serviceIndex", async (req, res) => {
     const agent = rows[0];
     if (!agent) return res.status(404).json({ error: "Agent not found" });
     
+    // Block purchases for offline agents — can't fulfill if not reachable
+    const agentStatus = computeAgentStatus(agent);
+    if (agentStatus === 'offline') {
+      return res.status(503).json({
+        error: "Agent is currently offline",
+        message: "This agent's callback server is unreachable. Please try again later.",
+        status: "offline",
+      });
+    }
+    
     let services = [];
     try { services = JSON.parse(agent.services_json || "[]"); } catch {}
     const service = services[Number(serviceIndex)];
