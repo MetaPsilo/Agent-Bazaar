@@ -64,7 +64,7 @@ app.use(express.json({
 app.use(generalRateLimit);
 
 // Initialize database schema with retry for Railway cold starts
-async function initDatabase(retries = 10, delayMs = 3000) {
+async function initDatabase(retries = 30, delayMs = 5000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       await pool.query('SELECT 1');
