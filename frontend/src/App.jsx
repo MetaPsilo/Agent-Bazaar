@@ -42,7 +42,7 @@ function App() {
     };
 
     // Fetch initial stats
-    fetch('/api/stats')
+    fetch('/stats')
       .then(res => res.json())
       .then(data => setStats(data))
       .catch(console.error);

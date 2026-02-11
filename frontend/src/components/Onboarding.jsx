@@ -67,7 +67,7 @@ const Onboarding = () => {
   const deployAgent = async () => {
     // Simulate deployment
     try {
-      const response = await fetch('/api/agents', {
+      const response = await fetch('/agents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

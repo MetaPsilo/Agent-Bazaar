@@ -152,7 +152,7 @@ const ServiceMarketplace = () => {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Call the actual service endpoint
-      const response = await fetch(`/api${selectedService.endpoint}`);
+      const response = await fetch(`/${selectedService.endpoint}`);
       
       if (response.status === 402) {
         // Handle payment required

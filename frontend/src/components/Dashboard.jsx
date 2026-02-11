@@ -11,7 +11,7 @@ const Dashboard = ({ stats, connected }) => {
 
   useEffect(() => {
     // Fetch leaderboard data
-    fetch('/api/leaderboard?limit=5')
+    fetch('/leaderboard?limit=5')
       .then(res => res.json())
       .then(data => setLeaderboard(data))
       .catch(console.error);

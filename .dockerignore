@@ -1,0 +1,11 @@
+node_modules
+**/node_modules
+target
+.anchor
+api/bazaar.db
+api/.env
+*.pem
+*.key
+**/id.json
+.DS_Store
+test-ledger

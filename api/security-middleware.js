@@ -113,7 +113,7 @@ const handleValidationErrors = (req, res, next) => {
 // CORS configuration - more restrictive
 const corsConfig = {
   origin: (origin, callback) => {
-    // Allow localhost and common development origins
+    // Allow localhost, production origins, and configured CORS_ORIGIN
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:3001',
@@ -123,8 +123,13 @@ const corsConfig = {
       'http://127.0.0.1:5173',
       'http://127.0.0.1:5174',
       'https://api.agentbazaar.com',
-      'https://agentbazaar.com'
+      'https://agentbazaar.com',
+      'https://www.agentbazaar.com',
     ];
+    // Add CORS_ORIGIN env var if set
+    if (process.env.CORS_ORIGIN) {
+      process.env.CORS_ORIGIN.split(',').forEach(o => allowedOrigins.push(o.trim()));
+    }
     
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);

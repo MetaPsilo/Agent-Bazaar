@@ -615,6 +615,21 @@ app.put("/agents/:id", [
 // Health
 app.get("/health", (_, res) => res.json({ status: "ok" }));
 
+// Serve frontend static files in production
+if (process.env.NODE_ENV === 'production') {
+  const frontendPath = path.join(__dirname, '..', 'frontend', 'dist');
+  app.use(express.static(frontendPath));
+  // SPA fallback — serve index.html for all non-API routes
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/agents') && !req.path.startsWith('/stats') && 
+        !req.path.startsWith('/leaderboard') && !req.path.startsWith('/search') &&
+        !req.path.startsWith('/services') && !req.path.startsWith('/health') &&
+        !req.path.startsWith('/ws')) {
+      res.sendFile(path.join(frontendPath, 'index.html'));
+    }
+  });
+}
+
 // SECURITY: Connection timeouts to prevent Slowloris attacks
 server.timeout = 30000; // 30s request timeout
 server.headersTimeout = 10000; // 10s to send headers
