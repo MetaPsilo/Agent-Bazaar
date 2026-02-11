@@ -118,6 +118,7 @@ async function initDatabase() {
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN callback_secret TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_agent_rater ON feedback (agent_id, rater);`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_tx_signature ON feedback (tx_signature) WHERE tx_signature IS NOT NULL;`,
+    `DO $$ BEGIN ALTER TABLE agents ADD COLUMN last_seen_at INTEGER DEFAULT 0; EXCEPTION WHEN duplicate_column THEN NULL; END $$;`,
   ];
   for (const m of migrations) {
     await pool.query(m);
@@ -125,6 +126,85 @@ async function initDatabase() {
 
   // Initialize payment cache
   await initPaymentCache(pool);
+
+  // Start periodic agent health checks
+  startHealthChecks();
+}
+
+// ============================================================
+// AGENT HEALTH CHECK SYSTEM
+// Periodically pings callback URLs to determine online/offline
+// ============================================================
+function computeAgentStatus(agent) {
+  if (!agent.active) return 'offline';
+  if (!agent.last_seen_at) return 'offline';
+  const age = Math.floor(Date.now() / 1000) - agent.last_seen_at;
+  if (age < 120) return 'online';    // Seen in last 2 min
+  if (age < 600) return 'busy';      // Seen in last 10 min (might be slow)
+  return 'offline';
+}
+
+function mapAgent(a) {
+  const { callback_secret, services_json, ...safe } = a;
+  return {
+    ...safe,
+    services: (() => { try { return JSON.parse(services_json || '[]'); } catch { return []; } })(),
+    status: computeAgentStatus(a),
+  };
+}
+
+async function checkAgentHealth(agent) {
+  if (!agent.callback_url) return false;
+  try {
+    // Hit the root of the callback server (not /fulfill) for a lightweight health check
+    const baseUrl = new URL(agent.callback_url);
+    const healthUrl = `${baseUrl.protocol}//${baseUrl.host}/health`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(healthUrl, { signal: controller.signal });
+    clearTimeout(timeout);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+function startHealthChecks() {
+  // Run every 60 seconds
+  setInterval(async () => {
+    try {
+      const { rows: agents } = await pool.query(
+        "SELECT agent_id, callback_url FROM agents WHERE active = 1 AND callback_url IS NOT NULL"
+      );
+      const now = Math.floor(Date.now() / 1000);
+      for (const agent of agents) {
+        const alive = await checkAgentHealth(agent);
+        if (alive) {
+          await pool.query("UPDATE agents SET last_seen_at = $1 WHERE agent_id = $2", [now, agent.agent_id]);
+        }
+      }
+    } catch (err) {
+      console.error("Health check error:", err.message);
+    }
+  }, 60000);
+
+  // Run immediately on startup
+  setTimeout(async () => {
+    try {
+      const { rows: agents } = await pool.query(
+        "SELECT agent_id, callback_url FROM agents WHERE active = 1 AND callback_url IS NOT NULL"
+      );
+      const now = Math.floor(Date.now() / 1000);
+      for (const agent of agents) {
+        const alive = await checkAgentHealth(agent);
+        if (alive) {
+          await pool.query("UPDATE agents SET last_seen_at = $1 WHERE agent_id = $2", [now, agent.agent_id]);
+        }
+      }
+    } catch (err) {
+      console.error("Initial health check error:", err.message);
+    }
+  }, 5000);
 }
 
 // WebSocket setup with security
@@ -767,10 +847,7 @@ app.get("/agents", [
     params.push(Number(limit), Number(offset));
 
     const { rows: agents } = await pool.query(queryStr, params);
-    const mapped = agents.map(a => {
-      const { callback_secret, services_json, ...safe } = a;
-      return { ...safe, services: (() => { try { return JSON.parse(services_json || '[]'); } catch { return []; } })() };
-    });
+    const mapped = agents.map(mapAgent);
     
     const { rows: countRows } = await pool.query("SELECT COUNT(*) as c FROM agents WHERE active = 1");
     const total = parseInt(countRows[0].c);
@@ -798,9 +875,7 @@ app.get("/agents/:id", [
     
     const raw = rows[0];
     if (!raw) return res.status(404).json({ error: "Agent not found" });
-    const { callback_secret, services_json, ...agent } = raw;
-    agent.services = (() => { try { return JSON.parse(services_json || '[]'); } catch { return []; } })();
-    res.json(agent);
+    res.json(mapAgent(raw));
   } catch (error) {
     console.error("Agent fetch error:", error);
     res.status(500).json({ error: "Database error" });
@@ -869,10 +944,7 @@ app.get("/leaderboard", [
     `;
     
     const { rows } = await pool.query(queryStr, [Number(limit)]);
-    const agents = rows.map(a => {
-      const { callback_secret, services_json, ...safe } = a;
-      return { ...safe, services: (() => { try { return JSON.parse(services_json || '[]'); } catch { return []; } })() };
-    });
+    const agents = rows.map(mapAgent);
     
     res.json(agents);
   } catch (error) {
