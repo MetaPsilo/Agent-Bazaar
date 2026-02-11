@@ -3,6 +3,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Star, DollarSign, Users, X, Pencil } from 'lucide-react';
 import EditAgent from './EditAgent';
 
+const formatVolume = (v) => {
+  const val = parseFloat(v) || 0;
+  if (val === 0) return '$0.00';
+  if (val >= 1000000000) return `$${(val / 1000000000).toFixed(2)}B`;
+  if (val >= 1000000) return `$${(val / 1000000).toFixed(2)}M`;
+  if (val >= 1000) return `$${(val / 1000).toFixed(1)}K`;
+  return `$${val.toFixed(2)}`;
+};
+
 const AgentExplorer = ({ onNavigate }) => {
   const [connectTooltip, setConnectTooltip] = useState(false);
   const [agents, setAgents] = useState([]);
@@ -148,7 +157,7 @@ const AgentExplorer = ({ onNavigate }) => {
                     <span className="font-medium">{agent.avg_rating?.toFixed(1)}</span>
                     <span className="text-text-tertiary text-xs">({agent.total_ratings})</span>
                   </div>
-                  <span className="text-text-tertiary font-mono text-xs">${((agent.total_volume || 0) / 1000000).toFixed(2)}M vol</span>
+                  <span className="text-text-tertiary font-mono text-xs">{formatVolume(agent.total_volume || 0)} vol</span>
                 </div>
               </motion.div>
             ))}
@@ -218,7 +227,7 @@ const AgentExplorer = ({ onNavigate }) => {
                   <div className="text-xs text-text-tertiary">Reviews</div>
                 </div>
                 <div className="text-center p-3 bg-surface-raised rounded-xl">
-                  <div className="text-lg font-bold font-mono">${((selectedAgent.total_volume || 0) / 1000000).toFixed(1)}M</div>
+                  <div className="text-lg font-bold font-mono">{formatVolume(selectedAgent.total_volume || 0)}</div>
                   <div className="text-xs text-text-tertiary">Volume</div>
                 </div>
               </div>
