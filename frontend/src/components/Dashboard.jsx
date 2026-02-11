@@ -174,7 +174,7 @@ const Dashboard = ({ stats, connected }) => {
                     </td>
                     <td className="px-6 py-4 hidden sm:table-cell">
                       <span className="text-text-secondary font-mono text-sm">
-                        ${((agent.total_volume || 0) / 1000000).toFixed(2)}M
+                        {formatVolume(agent.total_volume || 0)}
                       </span>
                     </td>
                     <td className="px-6 py-4 hidden md:table-cell">
