@@ -79,6 +79,7 @@ db.exec(`
     name TEXT NOT NULL,
     description TEXT,
     agent_uri TEXT,
+    services_json TEXT DEFAULT '[]',
     active INTEGER DEFAULT 1,
     registered_at INTEGER,
     updated_at INTEGER
@@ -115,6 +116,13 @@ db.exec(`
 
   INSERT OR IGNORE INTO protocol_stats (id) VALUES (1);
 `);
+
+// Migration: add services_json column if missing
+try {
+  db.exec(`ALTER TABLE agents ADD COLUMN services_json TEXT DEFAULT '[]'`);
+} catch (e) {
+  // Column already exists
+}
 
 // WebSocket setup with security
 const server = http.createServer(app);
@@ -552,7 +560,10 @@ app.get("/agents", [
     params.push(Number(limit), Number(offset));
 
     const agentStmt = safePreparedStatement(db, queryStr, params);
-    const agents = agentStmt.all(...params);
+    const agents = agentStmt.all(...params).map(a => ({
+      ...a,
+      services: (() => { try { return JSON.parse(a.services_json || '[]'); } catch { return []; } })(),
+    }));
     
     const countStmt = safePreparedStatement(db, "SELECT COUNT(*) as c FROM agents WHERE active = 1", []);
     const total = countStmt.get().c;
@@ -580,6 +591,7 @@ app.get("/agents/:id", [
     
     const agent = stmt.get(req.params.id);
     if (!agent) return res.status(404).json({ error: "Agent not found" });
+    agent.services = (() => { try { return JSON.parse(agent.services_json || '[]'); } catch { return []; } })();
     res.json(agent);
   } catch (error) {
     console.error("Agent fetch error:", error);
@@ -650,7 +662,10 @@ app.get("/leaderboard", [
     `;
     
     const agentsStmt = safePreparedStatement(db, queryStr, [limit]);
-    const agents = agentsStmt.all(Number(limit));
+    const agents = agentsStmt.all(Number(limit)).map(a => ({
+      ...a,
+      services: (() => { try { return JSON.parse(a.services_json || '[]'); } catch { return []; } })(),
+    }));
     
     res.json(agents);
   } catch (error) {
@@ -789,14 +804,23 @@ app.post("/feedback", [
 // POST /agents - register agent via API (stores in DB, for demo)
 app.post("/agents", registrationRateLimit, [
   validateString('name', 64),
-  validateString('description', 256),
+  validateString('description', 512),
   body('agentUri').optional().isURL().withMessage('Invalid agent URI'),
+  body('services').optional().isArray({ max: 20 }).withMessage('Services must be an array (max 20)'),
   validatePubkey('owner'),
   validatePubkey('agentWallet').optional(),
   handleValidationErrors
 ], (req, res) => {
   try {
-    const { name, description = "", agentUri = "", owner, agentWallet } = req.body;
+    const { name, description = "", agentUri = "", owner, agentWallet, services = [] } = req.body;
+    
+    // Sanitize services array
+    const sanitizedServices = services.slice(0, 20).map(s => ({
+      name: String(s.name || '').slice(0, 64),
+      description: String(s.description || '').slice(0, 256),
+      price: String(s.price || '').slice(0, 20),
+    })).filter(s => s.name.length > 0);
+    const servicesJson = JSON.stringify(sanitizedServices);
 
     // Check for duplicate names
     const existingStmt = safePreparedStatement(db, "SELECT agent_id FROM agents WHERE name = ? AND active = 1", [name]);
@@ -812,10 +836,10 @@ app.post("/agents", registrationRateLimit, [
       const now = Math.floor(Date.now() / 1000);
 
       const insertAgentStmt = safePreparedStatement(db,
-        "INSERT INTO agents (agent_id, owner, agent_wallet, name, description, agent_uri, active, registered_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)",
-        [agentId, owner, agentWallet || owner, name, description, agentUri, now, now]
+        "INSERT INTO agents (agent_id, owner, agent_wallet, name, description, agent_uri, services_json, active, registered_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+        [agentId, owner, agentWallet || owner, name, description, agentUri, servicesJson, now, now]
       );
-      insertAgentStmt.run(agentId, owner, agentWallet || owner, name, description, agentUri, now, now);
+      insertAgentStmt.run(agentId, owner, agentWallet || owner, name, description, agentUri, servicesJson, now, now);
 
       const insertRepStmt = safePreparedStatement(db, "INSERT INTO reputation (agent_id) VALUES (?)", [agentId]);
       insertRepStmt.run(agentId);

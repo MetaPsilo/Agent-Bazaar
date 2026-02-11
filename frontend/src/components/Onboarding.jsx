@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight, ArrowLeft, Check, Copy, Wallet, Code, Rocket, Plus, Trash2 } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Check, Copy, Wallet, Code, Rocket, Plus, Trash2, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 
 const Onboarding = () => {
   const [step, setStep] = useState(1);
+  const [deploying, setDeploying] = useState(false);
+  const [deployResult, setDeployResult] = useState(null); // { success, message, agentId }
+  const [errors, setErrors] = useState({});
   const [form, setForm] = useState({
     name: '', description: '',
     services: [{ name: '', description: '', price: '' }],
-    walletConnected: false, walletAddress: ''
+    walletAddress: ''
   });
 
   const steps = [
@@ -17,7 +20,10 @@ const Onboarding = () => {
     { n: 4, title: 'Deploy', icon: Rocket },
   ];
 
-  const update = (field, value) => setForm(p => ({ ...p, [field]: value }));
+  const update = (field, value) => {
+    setForm(p => ({ ...p, [field]: value }));
+    setErrors(p => ({ ...p, [field]: null }));
+  };
   const updateService = (i, field, value) => {
     const s = [...form.services];
     s[i][field] = value;
@@ -26,44 +32,69 @@ const Onboarding = () => {
   const addService = () => setForm(p => ({ ...p, services: [...p.services, { name: '', description: '', price: '' }] }));
   const removeService = (i) => setForm(p => ({ ...p, services: p.services.filter((_, j) => j !== i) }));
 
-  const connectWallet = () => {
-    setTimeout(() => setForm(p => ({ ...p, walletConnected: true, walletAddress: 'HkrtQ8FGS2rkhCC11Z9gHaeMJ93DAfvutmTyq3bLvERd' })), 800);
+  const isValidSolanaAddress = (addr) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr);
+
+  const validateStep = (s) => {
+    const e = {};
+    if (s === 1) {
+      if (!form.name.trim()) e.name = 'Agent name is required';
+      else if (form.name.trim().length < 3) e.name = 'Name must be at least 3 characters';
+      if (!form.description.trim()) e.description = 'Description is required';
+    }
+    if (s === 3) {
+      if (!form.walletAddress.trim()) e.walletAddress = 'Wallet address is required';
+      else if (!isValidSolanaAddress(form.walletAddress.trim())) e.walletAddress = 'Invalid Solana address';
+    }
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const nextStep = () => {
+    if (validateStep(step) && step < 4) setStep(step + 1);
   };
 
   const deploy = async () => {
+    setDeploying(true);
+    setDeployResult(null);
     try {
       const res = await fetch('/agents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: form.name, description: form.description,
-          owner: form.walletAddress, agentWallet: form.walletAddress,
-          agentUri: `https://api.agentbazaar.com/agents/${form.name.toLowerCase().replace(/\s+/g, '-')}/registration.json`
+          name: form.name.trim(),
+          description: form.description.trim(),
+          owner: form.walletAddress.trim(),
+          agentWallet: form.walletAddress.trim(),
+          services: form.services.filter(s => s.name.trim()),
+          agentUri: `https://agentbazaar.org/agents/${form.name.toLowerCase().replace(/\s+/g, '-')}`
         }),
       });
-      if (res.ok) console.log('Agent registered:', await res.json());
-    } catch (e) { console.error('Registration failed:', e); }
+      const data = await res.json();
+      if (res.ok) {
+        setDeployResult({ success: true, message: `Agent registered! ID: ${data.agentId}`, agentId: data.agentId });
+      } else {
+        setDeployResult({ success: false, message: data.error || 'Registration failed' });
+      }
+    } catch (e) {
+      setDeployResult({ success: false, message: 'Network error — check your connection' });
+    } finally {
+      setDeploying(false);
+    }
   };
 
   const inputClass = 'w-full px-4 py-3 bg-surface border border-border rounded-xl text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent focus:outline-none transition-colors';
+  const errorInputClass = 'w-full px-4 py-3 bg-surface border border-danger rounded-xl text-sm text-text-primary placeholder:text-text-tertiary focus:border-danger focus:outline-none transition-colors';
 
   const codeExamples = {
     register: `curl -X POST https://agentbazaar.org/agents \\
   -H "Content-Type: application/json" \\
   -d '{
     "name": "${form.name || 'MyAgent'}",
-    "description": "AI agent description",
-    "owner": "YOUR_WALLET_ADDRESS",
-    "agentWallet": "YOUR_AGENT_WALLET"
+    "description": "${form.description?.slice(0, 40) || 'AI agent description'}...",
+    "owner": "${form.walletAddress || 'YOUR_WALLET_ADDRESS'}",
+    "agentWallet": "${form.walletAddress || 'YOUR_AGENT_WALLET'}",
+    "services": ${JSON.stringify(form.services.filter(s => s.name).map(s => ({ name: s.name, price: s.price })), null, 2)}
   }'`,
-    purchase: `const res = await fetch('/services/research/pulse');
-if (res.status === 402) {
-  const info = await res.json();
-  const payment = await makePayment(info);
-  const data = await fetch('/services/research/pulse', {
-    headers: { 'Authorization': \`x402 \${proof}\` }
-  }).then(r => r.json());
-}`,
   };
 
   const renderStep = () => {
@@ -73,12 +104,15 @@ if (res.status === 402) {
           <motion.div key="s1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
             <div>
               <label className="block text-sm font-medium mb-2">Agent Name</label>
-              <input type="text" className={inputClass} placeholder="e.g. MarketPulse AI" value={form.name} onChange={e => update('name', e.target.value)} />
+              <input type="text" className={errors.name ? errorInputClass : inputClass} placeholder="e.g. MarketPulse AI" value={form.name} onChange={e => update('name', e.target.value)} maxLength={64} />
+              {errors.name && <p className="text-xs text-danger mt-1.5">{errors.name}</p>}
+              <p className="text-xs text-text-tertiary mt-1.5">{form.name.length}/64 characters</p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-2">Description</label>
-              <textarea rows={4} className={`${inputClass} resize-none`} placeholder="Describe your agent's capabilities..." value={form.description} onChange={e => update('description', e.target.value)} />
-              <p className="text-xs text-text-tertiary mt-2">Be specific about capabilities and pricing model.</p>
+              <textarea rows={4} className={`${errors.description ? errorInputClass : inputClass} resize-none`} placeholder="Describe your agent's capabilities, what problems it solves, and how it works..." value={form.description} onChange={e => update('description', e.target.value)} maxLength={512} />
+              {errors.description && <p className="text-xs text-danger mt-1.5">{errors.description}</p>}
+              <p className="text-xs text-text-tertiary mt-1.5">{form.description.length}/512 characters</p>
             </div>
           </motion.div>
         );
@@ -86,7 +120,10 @@ if (res.status === 402) {
         return (
           <motion.div key="s2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-5">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Services & Pricing</h3>
+              <div>
+                <h3 className="font-semibold">Services & Pricing</h3>
+                <p className="text-xs text-text-tertiary mt-1">Define the x402-enabled endpoints your agent offers.</p>
+              </div>
               <button onClick={addService} className="flex items-center gap-1.5 text-sm text-accent hover:text-accent-hover transition-colors">
                 <Plus className="w-4 h-4" /> Add
               </button>
@@ -102,81 +139,101 @@ if (res.status === 402) {
                   )}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <input type="text" className={inputClass} placeholder="Service name" value={s.name} onChange={e => updateService(i, 'name', e.target.value)} />
-                  <input type="number" step="0.001" className={inputClass} placeholder="Price (USDC)" value={s.price} onChange={e => updateService(i, 'price', e.target.value)} />
-                  <input type="text" className={inputClass} placeholder="Description" value={s.description} onChange={e => updateService(i, 'description', e.target.value)} />
+                  <input type="text" className={inputClass} placeholder="Service name" value={s.name} onChange={e => updateService(i, 'name', e.target.value)} maxLength={64} />
+                  <input type="text" className={inputClass} placeholder="Price (USDC)" value={s.price} onChange={e => updateService(i, 'price', e.target.value)} />
+                  <input type="text" className={inputClass} placeholder="Description" value={s.description} onChange={e => updateService(i, 'description', e.target.value)} maxLength={256} />
                 </div>
               </div>
             ))}
+            <p className="text-xs text-text-tertiary">Services are optional. You can add them later via the API.</p>
           </motion.div>
         );
       case 3:
         return (
-          <motion.div key="s3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6 text-center">
-            {!form.walletConnected ? (
-              <>
-                <Wallet className="w-16 h-16 text-text-tertiary mx-auto" />
-                <div>
-                  <h3 className="text-xl font-semibold mb-2">Connect Your Wallet</h3>
-                  <p className="text-text-secondary text-sm">Sign transactions and receive payments on Solana.</p>
+          <motion.div key="s3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+            <div className="text-center mb-2">
+              <Wallet className="w-12 h-12 text-text-tertiary mx-auto mb-3" />
+              <h3 className="text-xl font-semibold mb-2">Your Solana Wallet</h3>
+              <p className="text-text-secondary text-sm">This wallet will own the agent and receive payments.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Wallet Address</label>
+              <input
+                type="text"
+                className={errors.walletAddress ? errorInputClass : inputClass}
+                placeholder="e.g. HkrtQ8FG..."
+                value={form.walletAddress}
+                onChange={e => update('walletAddress', e.target.value)}
+              />
+              {errors.walletAddress && <p className="text-xs text-danger mt-1.5">{errors.walletAddress}</p>}
+              {form.walletAddress && isValidSolanaAddress(form.walletAddress) && (
+                <div className="flex items-center gap-1.5 mt-2 text-success text-xs">
+                  <Check className="w-3.5 h-3.5" /> Valid Solana address
                 </div>
-                <div className="flex gap-3 max-w-sm mx-auto">
-                  <button onClick={connectWallet} className="flex-1 bg-[#ab9ff2] hover:bg-[#9b8fe2] text-white px-6 py-3 rounded-xl font-medium transition-colors">
-                    Phantom
-                  </button>
-                  <button onClick={connectWallet} className="flex-1 bg-accent hover:bg-accent-hover text-white px-6 py-3 rounded-xl font-medium transition-colors">
-                    Solflare
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="bg-surface-raised rounded-xl p-6">
-                <div className="w-12 h-12 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Check className="w-6 h-6 text-success" />
-                </div>
-                <h3 className="text-lg font-semibold text-success mb-2">Wallet Connected</h3>
-                <div className="flex items-center justify-center gap-2">
-                  <span className="text-sm font-mono text-text-secondary">{form.walletAddress.slice(0, 8)}...{form.walletAddress.slice(-8)}</span>
-                  <button className="text-text-tertiary hover:text-text-primary"><Copy className="w-3.5 h-3.5" /></button>
-                </div>
-              </div>
-            )}
+              )}
+              <p className="text-xs text-text-tertiary mt-2">Paste your Solana wallet public key (base58). This is the owner address for your agent.</p>
+            </div>
           </motion.div>
         );
       case 4:
         return (
           <motion.div key="s4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-            <div className="text-center mb-2">
-              <Rocket className="w-12 h-12 text-accent mx-auto mb-3" />
-              <h3 className="text-xl font-semibold">Ready to Deploy</h3>
-            </div>
-
-            <div className="bg-surface-raised rounded-xl p-5 space-y-3 text-sm">
-              <div className="flex justify-between"><span className="text-text-tertiary">Name</span><span className="font-medium">{form.name || '—'}</span></div>
-              <div className="flex justify-between"><span className="text-text-tertiary">Services</span><span className="font-medium">{form.services.filter(s => s.name).length} configured</span></div>
-              <div className="flex justify-between"><span className="text-text-tertiary">Wallet</span><span className="font-mono text-accent">{form.walletConnected ? 'Connected' : 'Not connected'}</span></div>
-            </div>
-
-            <div className="space-y-4">
-              <h4 className="text-sm font-medium text-text-tertiary">Integration Examples</h4>
-              {Object.entries(codeExamples).map(([title, code]) => (
-                <div key={title} className="bg-primary rounded-xl border border-border overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-                    <span className="text-xs font-medium text-text-tertiary capitalize">{title}</span>
-                    <button className="text-text-tertiary hover:text-text-primary"><Copy className="w-3.5 h-3.5" /></button>
-                  </div>
-                  <pre className="p-4 text-xs text-text-secondary font-mono overflow-x-auto leading-relaxed"><code>{code}</code></pre>
+            {deployResult?.success ? (
+              <div className="text-center py-6">
+                <div className="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="w-8 h-8 text-success" />
                 </div>
-              ))}
-            </div>
+                <h3 className="text-2xl font-bold text-success mb-2">Agent Deployed!</h3>
+                <p className="text-text-secondary mb-4">{deployResult.message}</p>
+                <p className="text-sm text-text-tertiary">Your agent is now live on the Agent Bazaar network.</p>
+              </div>
+            ) : (
+              <>
+                <div className="text-center mb-2">
+                  <Rocket className="w-12 h-12 text-accent mx-auto mb-3" />
+                  <h3 className="text-xl font-semibold">Ready to Deploy</h3>
+                </div>
 
-            <button
-              onClick={deploy}
-              disabled={!form.name || !form.walletConnected}
-              className="w-full bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-white px-8 py-3.5 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
-            >
-              <Rocket className="w-4 h-4" /> Deploy to Solana
-            </button>
+                <div className="bg-surface-raised rounded-xl p-5 space-y-3 text-sm">
+                  <div className="flex justify-between"><span className="text-text-tertiary">Name</span><span className="font-medium">{form.name || '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-text-tertiary">Description</span><span className="font-medium truncate max-w-[200px]">{form.description?.slice(0, 50) || '—'}{form.description?.length > 50 ? '...' : ''}</span></div>
+                  <div className="flex justify-between"><span className="text-text-tertiary">Services</span><span className="font-medium">{form.services.filter(s => s.name).length} configured</span></div>
+                  <div className="flex justify-between"><span className="text-text-tertiary">Wallet</span><span className="font-mono text-accent text-xs">{form.walletAddress ? `${form.walletAddress.slice(0, 6)}...${form.walletAddress.slice(-6)}` : '—'}</span></div>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="text-sm font-medium text-text-tertiary">Integration Example</h4>
+                  {Object.entries(codeExamples).map(([title, code]) => (
+                    <div key={title} className="bg-primary rounded-xl border border-border overflow-hidden">
+                      <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+                        <span className="text-xs font-medium text-text-tertiary capitalize">{title}</span>
+                        <button onClick={() => navigator.clipboard.writeText(code)} className="text-text-tertiary hover:text-text-primary"><Copy className="w-3.5 h-3.5" /></button>
+                      </div>
+                      <pre className="p-4 text-xs text-text-secondary font-mono overflow-x-auto leading-relaxed"><code>{code}</code></pre>
+                    </div>
+                  ))}
+                </div>
+
+                {deployResult && !deployResult.success && (
+                  <div className="flex items-center gap-2 p-4 bg-danger/10 border border-danger/20 rounded-xl text-sm text-danger">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    {deployResult.message}
+                  </div>
+                )}
+
+                <button
+                  onClick={deploy}
+                  disabled={!form.name || !form.walletAddress || !isValidSolanaAddress(form.walletAddress) || deploying}
+                  className="w-full bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-white px-8 py-3.5 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  {deploying ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Deploying...</>
+                  ) : (
+                    <><Rocket className="w-4 h-4" /> Deploy to Solana</>
+                  )}
+                </button>
+              </>
+            )}
           </motion.div>
         );
       default: return null;
@@ -187,7 +244,7 @@ if (res.status === 402) {
     <div className="max-w-2xl mx-auto space-y-8">
       <div>
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3">Register Your Agent</h1>
-        <p className="text-text-secondary text-lg">Deploy to Solana in four steps. Start earning today.</p>
+        <p className="text-text-secondary text-lg">Deploy to the permissionless network in four steps.</p>
       </div>
 
       {/* Stepper */}
@@ -215,23 +272,25 @@ if (res.status === 402) {
       </div>
 
       {/* Nav */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => step > 1 && setStep(step - 1)}
-          disabled={step <= 1}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-text-secondary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" /> Back
-        </button>
-        <span className="text-xs text-text-tertiary">Step {step} of 4</span>
-        <button
-          onClick={() => step < 4 && setStep(step + 1)}
-          disabled={step >= 4}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium bg-surface-raised hover:bg-border text-text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        >
-          Next <ArrowRight className="w-4 h-4" />
-        </button>
-      </div>
+      {!deployResult?.success && (
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => step > 1 && setStep(step - 1)}
+            disabled={step <= 1}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-text-secondary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back
+          </button>
+          <span className="text-xs text-text-tertiary">Step {step} of 4</span>
+          <button
+            onClick={nextStep}
+            disabled={step >= 4}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium bg-surface-raised hover:bg-border text-text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            Next <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };
