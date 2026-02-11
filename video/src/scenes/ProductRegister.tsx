@@ -26,53 +26,10 @@ export const ProductRegister: React.FC = () => {
         position: 'relative',
       }}>
         <OffthreadVideo src={staticFile('clips/register.mp4')} style={{width: 1400, borderRadius: 16, boxShadow: '0 0 60px rgba(59,130,246,0.15)'}} />
-        {/* Wallet pulse overlay */}
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          width: 200,
-          height: 60,
-          transform: 'translate(-50%, -50%)',
-          borderRadius: 12,
-          border: `2px solid rgba(59,130,246,${0.4 + walletPulse * 0.6})`,
-          boxShadow: `0 0 ${15 + walletPulse * 25}px rgba(59,130,246,${0.3 + walletPulse * 0.3})`,
-        }} />
+{/* Wallet pulse overlay removed */}
       </div>
 
-      {/* Step indicators */}
-      <div style={{
-        position: 'absolute',
-        top: 50,
-        display: 'flex',
-        gap: 30,
-        alignItems: 'center',
-      }}>
-        {steps.map((step, i) => {
-          const complete = stepCompleteFrame[i] >= 0 && frame > stepCompleteFrame[i];
-          const active = i === 2 && frame > 70;
-          const s = stepCompleteFrame[i] >= 0 ? spring({frame: Math.max(0, frame - stepCompleteFrame[i]), fps, config: {damping: 10, stiffness: 200}}) : 0;
-          return (
-            <div key={step} style={{
-              width: 50,
-              height: 50,
-              borderRadius: '50%',
-              backgroundColor: complete ? '#22c55e' : active ? '#3b82f6' : '#27272a',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              fontFamily: 'Inter, sans-serif',
-              fontSize: 22,
-              fontWeight: 700,
-              color: '#fafafa',
-              transform: `scale(${complete ? 0.8 + s * 0.2 : active ? 1.1 : 1})`,
-              boxShadow: active ? '0 0 20px rgba(59,130,246,0.5)' : 'none',
-            }}>
-              {complete ? '✓' : step}
-            </div>
-          );
-        })}
-      </div>
+{/* Step indicators removed — visible in the actual recording */}
 
       <div style={{
         position: 'absolute',
