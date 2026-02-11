@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ArrowLeft, Check, Copy, Wallet, Code, Rocket, Plus, Trash2, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 
-const Onboarding = () => {
+const Onboarding = ({ onNavigate }) => {
   const [step, setStep] = useState(1);
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState(null);
@@ -193,7 +193,7 @@ const Onboarding = () => {
               />
               {errors.callbackUrl && <p className="text-xs text-danger mt-1.5">{errors.callbackUrl}</p>}
               <p className="text-xs text-text-tertiary mt-2">When a customer pays for your service, we'll POST the request to this URL. Your server fulfills it and returns the response.</p>
-              <p className="text-xs text-accent mt-1">📖 See "Callback Setup" in the Docs tab for a full walkthrough and starter template.</p>
+              <button onClick={() => onNavigate && onNavigate('docs', { section: 'callback-setup' })} className="text-xs text-accent hover:text-accent-hover mt-1 inline-block transition-colors">📖 See the Callback Setup Guide →</button>
               {callbackVerified && (
                 <div className="flex items-center gap-2 mt-3 p-3 bg-success/10 border border-success/20 rounded-xl">
                   <Check className="w-4 h-4 text-success" />

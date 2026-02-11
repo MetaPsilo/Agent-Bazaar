@@ -60,7 +60,7 @@ function App() {
     switch (activeView) {
       case 'dashboard': return <Dashboard stats={stats} connected={connected} />;
       case 'explorer': return <AgentExplorer onNavigate={navigate} />;
-      case 'onboarding': return <Onboarding />;
+      case 'onboarding': return <Onboarding onNavigate={navigate} />;
       case 'marketplace': return <ServiceMarketplace initialSearch={marketplaceSearch} onSearchHandled={() => setMarketplaceSearch('')} />;
       case 'docs': return <Docs scrollToSection={docsSection} onSectionHandled={() => setDocsSection(null)} />;
       default: return <Dashboard stats={stats} connected={connected} />;
