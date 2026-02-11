@@ -1235,6 +1235,39 @@ app.put("/agents/:id", [
       return res.status(403).json({ error: "Signature verification failed" });
     }
 
+    // Extract additional updatable fields
+    const { callbackUrl, services } = req.body;
+
+    // Validate callback URL if provided
+    if (callbackUrl !== undefined && callbackUrl) {
+      const urlCheck = validateCallbackUrl(callbackUrl);
+      if (!urlCheck.valid) {
+        return res.status(400).json({ error: `Invalid callback URL: ${urlCheck.error}` });
+      }
+    }
+
+    // Validate and sanitize services if provided
+    let servicesJson;
+    if (services !== undefined) {
+      if (!Array.isArray(services)) {
+        return res.status(400).json({ error: "Services must be an array" });
+      }
+      if (services.length > 20) {
+        return res.status(400).json({ error: "Maximum 20 services allowed" });
+      }
+      const sanitized = services.map(s => ({
+        name: String(s.name || '').slice(0, 64),
+        description: String(s.description || '').slice(0, 256),
+        price: String(s.price || '').slice(0, 20),
+      })).filter(s => s.name.length > 0);
+      for (const s of sanitized) {
+        if (isNaN(parseFloat(s.price)) && s.price !== '') {
+          return res.status(400).json({ error: `Invalid price for service "${s.name}"` });
+        }
+      }
+      servicesJson = JSON.stringify(sanitized);
+    }
+
     // Build update query dynamically
     const updates = [];
     const values = [];
@@ -1256,6 +1289,14 @@ app.put("/agents/:id", [
       updates.push(`active = $${paramIndex++}`);
       values.push(active ? 1 : 0);
     }
+    if (callbackUrl !== undefined) {
+      updates.push(`callback_url = $${paramIndex++}`);
+      values.push(callbackUrl || null);
+    }
+    if (servicesJson !== undefined) {
+      updates.push(`services_json = $${paramIndex++}`);
+      values.push(servicesJson);
+    }
     
     if (updates.length === 0) {
       return res.status(400).json({ error: "No fields to update" });
@@ -1275,6 +1316,68 @@ app.put("/agents/:id", [
   }
 });
 
+// PUT /agents/:id/services - update agent services
+app.put("/agents/:id/services", [
+  validateAgentId,
+  handleValidationErrors
+], async (req, res) => {
+  try {
+    const agentId = req.params.id;
+    const { owner: requestOwner, authSignature, authMessage, services } = req.body;
+
+    const { rows: existingRows } = await pool.query("SELECT * FROM agents WHERE agent_id = $1", [agentId]);
+    const existing = existingRows[0];
+    if (!existing) return res.status(404).json({ error: "Agent not found" });
+
+    // Verify ownership via ed25519
+    if (!requestOwner || existing.owner !== requestOwner) {
+      return res.status(403).json({ error: "Unauthorized: only the agent owner can update" });
+    }
+    if (!authSignature || !authMessage) {
+      return res.status(403).json({ error: "Signature required", required: { authMessage: "update:<agentId>:<timestamp>", authSignature: "base58-encoded ed25519 signature" } });
+    }
+    try {
+      const { PublicKey } = require('@solana/web3.js');
+      const nacl = require('tweetnacl');
+      const bs58 = require('bs58');
+      const ownerPubkey = new PublicKey(requestOwner);
+      const messageBytes = new TextEncoder().encode(authMessage);
+      const signatureBytes = bs58.decode(authSignature);
+      const isValid = nacl.sign.detached.verify(messageBytes, signatureBytes, ownerPubkey.toBytes());
+      if (!isValid) return res.status(403).json({ error: "Invalid signature" });
+      if (!authMessage.includes(`update:${agentId}:`)) return res.status(403).json({ error: "Signature message must contain the agent ID" });
+      const msgTimestamp = parseInt(authMessage.split(':')[2]);
+      const now = Math.floor(Date.now() / 1000);
+      if (isNaN(msgTimestamp) || Math.abs(now - msgTimestamp) > 300) return res.status(403).json({ error: "Signature expired or timestamp invalid" });
+    } catch (sigError) {
+      return res.status(403).json({ error: "Signature verification failed" });
+    }
+
+    // Validate services
+    if (!Array.isArray(services)) return res.status(400).json({ error: "Services must be an array" });
+    if (services.length > 20) return res.status(400).json({ error: "Maximum 20 services allowed" });
+
+    const sanitized = services.map(s => ({
+      name: String(s.name || '').slice(0, 64),
+      description: String(s.description || '').slice(0, 256),
+      price: String(s.price || '').slice(0, 20),
+    })).filter(s => s.name.length > 0);
+
+    for (const s of sanitized) {
+      if (isNaN(parseFloat(s.price)) && s.price !== '') {
+        return res.status(400).json({ error: `Invalid price for service "${s.name}"` });
+      }
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    await pool.query("UPDATE agents SET services_json = $1, updated_at = $2 WHERE agent_id = $3", [JSON.stringify(sanitized), now, agentId]);
+    res.json({ success: true, agentId: Number(agentId), services: sanitized });
+  } catch (error) {
+    console.error("Services update error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
 // ============================================================
 // ADMIN ENDPOINTS (protected by TOKEN_SECRET)
 // ============================================================
@@ -1290,7 +1393,7 @@ app.patch("/admin/agents/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid agent ID" });
     }
     
-    const allowedFields = ["callback_url", "name", "description", "agent_uri", "active", "agent_wallet"];
+    const allowedFields = ["callback_url", "name", "description", "agent_uri", "active", "agent_wallet", "services_json"];
     const updates = [];
     const values = [];
     let paramIdx = 1;

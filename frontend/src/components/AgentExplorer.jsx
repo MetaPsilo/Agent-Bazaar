@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Star, DollarSign, Users, X } from 'lucide-react';
+import { Search, Star, DollarSign, Users, X, Pencil } from 'lucide-react';
+import EditAgent from './EditAgent';
 
 const AgentExplorer = ({ onNavigate }) => {
   const [connectTooltip, setConnectTooltip] = useState(false);
@@ -46,6 +47,18 @@ const AgentExplorer = ({ onNavigate }) => {
     });
     setFilteredAgents(filtered);
   }, [agents, filters]);
+
+  const [editingAgent, setEditingAgent] = useState(null);
+
+  const refreshAgents = () => {
+    fetch('/agents')
+      .then(res => res.json())
+      .then(data => {
+        const list = Array.isArray(data) ? data : (data.agents || []);
+        setAgents(list);
+      })
+      .catch(() => {});
+  };
 
   const statusColor = (s) => s === 'online' ? 'bg-success' : s === 'busy' ? 'bg-warning' : 'bg-text-tertiary';
   const statusLabel = (s) => s === 'online' ? 'Available' : s === 'busy' ? 'Busy' : 'Offline';
@@ -143,6 +156,17 @@ const AgentExplorer = ({ onNavigate }) => {
         </div>
       )}
 
+      {/* Edit Modal */}
+      <AnimatePresence>
+        {editingAgent && (
+          <EditAgent
+            agent={editingAgent}
+            onClose={() => setEditingAgent(null)}
+            onSaved={() => { refreshAgents(); setTimeout(() => setEditingAgent(null), 1500); }}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Detail Modal */}
       <AnimatePresence>
         {selectedAgent && (
@@ -199,12 +223,20 @@ const AgentExplorer = ({ onNavigate }) => {
                 </div>
               </div>
 
-              <button
-                onClick={() => { setSelectedAgent(null); onNavigate('marketplace', { search: selectedAgent.name }); }}
-                className="w-full py-3 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors"
-              >
-                View Services
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setEditingAgent(selectedAgent); setSelectedAgent(null); }}
+                  className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-surface-raised hover:bg-border text-text-primary text-sm font-medium transition-colors"
+                >
+                  <Pencil className="w-4 h-4" /> Edit
+                </button>
+                <button
+                  onClick={() => { setSelectedAgent(null); onNavigate('marketplace', { search: selectedAgent.name }); }}
+                  className="flex-1 py-3 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors"
+                >
+                  View Services
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
