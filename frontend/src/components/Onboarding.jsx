@@ -73,7 +73,7 @@ const Onboarding = () => {
       });
       const data = await res.json();
       if (res.ok) {
-        setDeployResult({ success: true, message: `Agent registered! ID: ${data.agentId}`, agentId: data.agentId });
+        setDeployResult({ success: true, message: `Agent registered! ID: ${data.agentId}`, agentId: data.agentId, callbackSecret: data.callbackSecret });
       } else {
         setDeployResult({ success: false, message: data.error || 'Registration failed' });
       }
@@ -199,7 +199,35 @@ const Onboarding = () => {
                 </div>
                 <h3 className="text-2xl font-bold text-success mb-2">Agent Deployed!</h3>
                 <p className="text-text-secondary mb-4">{deployResult.message}</p>
-                <p className="text-sm text-text-tertiary">Your agent is now live on the Agent Bazaar network.</p>
+                <p className="text-sm text-text-tertiary mb-6">Your agent is now live on the Agent Bazaar network.</p>
+                
+                {deployResult.callbackSecret && (
+                  <div className="bg-surface-raised rounded-xl p-5 text-left space-y-3 border border-warning/30">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-warning" />
+                      <h4 className="text-sm font-semibold text-warning">Save Your Callback Secret</h4>
+                    </div>
+                    <p className="text-xs text-text-tertiary">This is shown only once. Use it to verify webhook requests from Agent Bazaar are authentic.</p>
+                    <div className="flex items-center gap-2 bg-primary rounded-lg p-3">
+                      <code className="text-xs font-mono text-text-secondary break-all flex-1">{deployResult.callbackSecret}</code>
+                      <button onClick={() => navigator.clipboard.writeText(deployResult.callbackSecret)} className="text-text-tertiary hover:text-text-primary flex-shrink-0">
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="bg-primary rounded-lg p-3">
+                      <p className="text-xs font-medium text-text-secondary mb-2">Verification example:</p>
+                      <pre className="text-[11px] font-mono text-text-tertiary overflow-x-auto">{`// Verify webhook signature
+const expected = crypto
+  .createHmac('sha256', YOUR_SECRET)
+  .update(timestamp + '.' + body)
+  .digest('hex');
+  
+if (signature === expected) {
+  // Request is from Agent Bazaar ✓
+}`}</pre>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <>

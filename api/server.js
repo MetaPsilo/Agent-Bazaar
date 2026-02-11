@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const crypto = require("crypto");
 const http = require("http");
 const { WebSocketServer } = require("ws");
 const Database = require("better-sqlite3");
@@ -80,6 +81,7 @@ db.exec(`
     description TEXT,
     agent_uri TEXT,
     callback_url TEXT,
+    callback_secret TEXT,
     services_json TEXT DEFAULT '[]',
     active INTEGER DEFAULT 1,
     registered_at INTEGER,
@@ -121,6 +123,7 @@ db.exec(`
 // Migrations
 try { db.exec(`ALTER TABLE agents ADD COLUMN services_json TEXT DEFAULT '[]'`); } catch {}
 try { db.exec(`ALTER TABLE agents ADD COLUMN callback_url TEXT`); } catch {}
+try { db.exec(`ALTER TABLE agents ADD COLUMN callback_secret TEXT`); } catch {}
 
 // WebSocket setup with security
 const server = http.createServer(app);
@@ -231,17 +234,29 @@ async function callAgentCallback(callbackUrl, agent, service, prompt, timeoutSec
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
     
+    const timestamp = new Date().toISOString();
+    const body = JSON.stringify({
+      agentId: agent.agent_id,
+      agentName: agent.name,
+      serviceName: service.name,
+      serviceDescription: service.description,
+      prompt,
+      timestamp,
+    });
+    
+    // Sign the request with the agent's callback secret
+    const signature = agent.callback_secret
+      ? crypto.createHmac("sha256", agent.callback_secret).update(`${timestamp}.${body}`).digest("hex")
+      : "";
+    
     const response = await fetch(callbackUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        agentId: agent.agent_id,
-        agentName: agent.name,
-        serviceName: service.name,
-        serviceDescription: service.description,
-        prompt,
-        timestamp: new Date().toISOString(),
-      }),
+      headers: { 
+        "Content-Type": "application/json",
+        "X-AgentBazaar-Signature": signature,
+        "X-AgentBazaar-Timestamp": timestamp,
+      },
+      body,
       signal: controller.signal,
     });
     
@@ -713,10 +728,10 @@ app.get("/agents", [
     params.push(Number(limit), Number(offset));
 
     const agentStmt = safePreparedStatement(db, queryStr, params);
-    const agents = agentStmt.all(...params).map(a => ({
-      ...a,
-      services: (() => { try { return JSON.parse(a.services_json || '[]'); } catch { return []; } })(),
-    }));
+    const agents = agentStmt.all(...params).map(a => {
+      const { callback_secret, services_json, ...safe } = a;
+      return { ...safe, services: (() => { try { return JSON.parse(services_json || '[]'); } catch { return []; } })() };
+    });
     
     const countStmt = safePreparedStatement(db, "SELECT COUNT(*) as c FROM agents WHERE active = 1", []);
     const total = countStmt.get().c;
@@ -742,9 +757,10 @@ app.get("/agents/:id", [
       WHERE a.agent_id = ?
     `, [req.params.id]);
     
-    const agent = stmt.get(req.params.id);
-    if (!agent) return res.status(404).json({ error: "Agent not found" });
-    agent.services = (() => { try { return JSON.parse(agent.services_json || '[]'); } catch { return []; } })();
+    const raw = stmt.get(req.params.id);
+    if (!raw) return res.status(404).json({ error: "Agent not found" });
+    const { callback_secret, services_json, ...agent } = raw;
+    agent.services = (() => { try { return JSON.parse(services_json || '[]'); } catch { return []; } })();
     res.json(agent);
   } catch (error) {
     console.error("Agent fetch error:", error);
@@ -815,10 +831,10 @@ app.get("/leaderboard", [
     `;
     
     const agentsStmt = safePreparedStatement(db, queryStr, [limit]);
-    const agents = agentsStmt.all(Number(limit)).map(a => ({
-      ...a,
-      services: (() => { try { return JSON.parse(a.services_json || '[]'); } catch { return []; } })(),
-    }));
+    const agents = agentsStmt.all(Number(limit)).map(a => {
+      const { callback_secret, services_json, ...safe } = a;
+      return { ...safe, services: (() => { try { return JSON.parse(services_json || '[]'); } catch { return []; } })() };
+    });
     
     res.json(agents);
   } catch (error) {
@@ -968,6 +984,9 @@ app.post("/agents", registrationRateLimit, [
   try {
     const { name, description = "", agentUri = "", callbackUrl = "", owner, agentWallet, services = [] } = req.body;
     
+    // Generate callback secret for webhook signature verification
+    const callbackSecret = crypto.randomBytes(32).toString("hex");
+    
     // Sanitize services array
     const sanitizedServices = services.slice(0, 20).map(s => ({
       name: String(s.name || '').slice(0, 64),
@@ -990,10 +1009,10 @@ app.post("/agents", registrationRateLimit, [
       const now = Math.floor(Date.now() / 1000);
 
       const insertAgentStmt = safePreparedStatement(db,
-        "INSERT INTO agents (agent_id, owner, agent_wallet, name, description, agent_uri, callback_url, services_json, active, registered_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
-        [agentId, owner, agentWallet || owner, name, description, agentUri, callbackUrl, servicesJson, now, now]
+        "INSERT INTO agents (agent_id, owner, agent_wallet, name, description, agent_uri, callback_url, callback_secret, services_json, active, registered_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+        [agentId, owner, agentWallet || owner, name, description, agentUri, callbackUrl, callbackSecret, servicesJson, now, now]
       );
-      insertAgentStmt.run(agentId, owner, agentWallet || owner, name, description, agentUri, callbackUrl, servicesJson, now, now);
+      insertAgentStmt.run(agentId, owner, agentWallet || owner, name, description, agentUri, callbackUrl, callbackSecret, servicesJson, now, now);
 
       const insertRepStmt = safePreparedStatement(db, "INSERT INTO reputation (agent_id) VALUES (?)", [agentId]);
       insertRepStmt.run(agentId);
@@ -1007,7 +1026,12 @@ app.post("/agents", registrationRateLimit, [
     const result = transaction();
     
     broadcast({ type: "registration", agentId: result.agentId, name: result.name, timestamp: result.timestamp });
-    res.json({ agentId: result.agentId, success: true });
+    res.json({ 
+      agentId: result.agentId, 
+      success: true,
+      callbackSecret: callbackSecret,
+      message: "Save your callback secret — it's shown only once. Use it to verify that webhook requests come from Agent Bazaar.",
+    });
   } catch (error) {
     console.error("Agent registration error:", error);
     res.status(500).json({ error: "Database error" });
