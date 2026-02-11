@@ -56,7 +56,7 @@ const Dashboard = ({ stats, connected }) => {
     { title: 'Total Agents', value: stats.totalAgents || 0, icon: Users },
     { title: 'Total Volume', value: formatVolume(stats.totalVolume), icon: DollarSign },
     { title: 'Transactions', value: stats.totalTransactions || 0, icon: Activity },
-    { title: 'Active Agents', value: stats.activeAgents || 0, icon: Zap },
+    { title: 'Total Ratings', value: stats.totalRatings || 0, icon: Zap },
   ];
 
   return (

@@ -17,7 +17,8 @@ function App() {
     totalAgents: 0,
     totalTransactions: 0,
     totalVolume: 0,
-    activeAgents: 0
+    activeAgents: 0,
+    totalRatings: 0
   });
 
   useEffect(() => {
@@ -42,6 +43,7 @@ function App() {
         totalTransactions: data.total_transactions || 0,
         totalVolume: data.total_volume || 0,
         activeAgents: data.activeAgents || 0,
+        totalRatings: data.totalRatings || 0,
       }))
       .catch(console.error);
 

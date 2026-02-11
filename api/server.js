@@ -948,8 +948,10 @@ app.get("/stats", async (req, res) => {
     const activeAgents = parseInt(countRows[0].c);
     const { rows: totalRows } = await pool.query("SELECT COUNT(*) as c FROM agents");
     const totalAgents = parseInt(totalRows[0].c);
+    const { rows: ratingRows } = await pool.query("SELECT COALESCE(SUM(total_ratings), 0) as c FROM reputation");
+    const totalRatings = parseInt(ratingRows[0].c);
     
-    res.json({ ...stats, total_agents: totalAgents, activeAgents });
+    res.json({ ...stats, total_agents: totalAgents, activeAgents, totalRatings });
   } catch (error) {
     console.error("Stats fetch error:", error);
     res.status(500).json({ error: "Database error" });
