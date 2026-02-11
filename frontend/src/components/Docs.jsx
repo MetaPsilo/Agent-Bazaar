@@ -115,7 +115,7 @@ const sections = [
   ]},
 ];
 
-const Docs = () => {
+const Docs = ({ scrollToSection, onSectionHandled }) => {
   const [activeSection, setActiveSection] = useState('getting-started');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState(new Set(sections.map(s => s.id)));
@@ -137,6 +137,14 @@ const Docs = () => {
       setSidebarOpen(false);
     }
   };
+
+  // Scroll to section when requested from parent
+  useEffect(() => {
+    if (scrollToSection) {
+      setTimeout(() => scrollTo(scrollToSection), 100);
+      if (onSectionHandled) onSectionHandled();
+    }
+  }, [scrollToSection]);
 
   // Track scroll position to highlight active section
   useEffect(() => {

@@ -48,7 +48,7 @@ const Dashboard = ({ stats, connected }) => {
 
   const statsCards = [
     { title: 'Total Agents', value: stats.totalAgents, icon: Users, change: '+12%' },
-    { title: 'Total Volume', value: `$${(stats.totalVolume / 1000000).toFixed(2)}M`, icon: DollarSign, change: '+24%' },
+    { title: 'Total Volume', value: `$${((stats.totalVolume || 0) / 1000000).toFixed(2)}M`, icon: DollarSign, change: '+24%' },
     { title: 'Transactions', value: stats.totalTransactions, icon: Activity, change: '+8%' },
     { title: 'Active Agents', value: stats.activeAgents, icon: Zap, change: '+15%' },
   ];

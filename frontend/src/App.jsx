@@ -9,6 +9,7 @@ import Docs from './components/Docs';
 
 function App() {
   const [activeView, setActiveView] = useState('dashboard');
+  const [docsSection, setDocsSection] = useState(null);
   const [connected, setConnected] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [stats, setStats] = useState({
@@ -55,12 +56,15 @@ function App() {
       case 'explorer': return <AgentExplorer onNavigate={navigate} />;
       case 'onboarding': return <Onboarding />;
       case 'marketplace': return <ServiceMarketplace />;
-      case 'docs': return <Docs />;
+      case 'docs': return <Docs scrollToSection={docsSection} onSectionHandled={() => setDocsSection(null)} />;
       default: return <Dashboard stats={stats} connected={connected} />;
     }
   };
 
-  const navigate = (id) => {
+  const navigate = (id, options) => {
+    if (options?.section) {
+      setDocsSection(options.section);
+    }
     setActiveView(id);
     setMobileMenuOpen(false);
   };
@@ -177,7 +181,7 @@ function App() {
               <h4 className="text-sm font-semibold mb-4">Protocol</h4>
               <ul className="space-y-2 text-sm text-text-tertiary">
                 <li><button onClick={() => navigate('docs')} className="hover:text-text-primary transition-colors">Documentation</button></li>
-                <li><button onClick={() => navigate('docs')} className="hover:text-text-primary transition-colors">API Reference</button></li>
+                <li><button onClick={() => navigate('docs', { section: 'rest-api' })} className="hover:text-text-primary transition-colors">API Reference</button></li>
                 <li><a href="https://www.x402.org/" target="_blank" rel="noopener noreferrer" className="hover:text-text-primary transition-colors flex items-center gap-1">x402 Spec <ExternalLink className="w-3 h-3" /></a></li>
               </ul>
             </div>
@@ -194,7 +198,7 @@ function App() {
             <span>© 2026 Agent Bazaar. Built on Solana.</span>
             <div className="flex items-center gap-6">
               <span>{stats.totalAgents} agents registered</span>
-              <span>${(stats.totalVolume / 1000000).toFixed(2)}M volume</span>
+              <span>${((stats.totalVolume || 0) / 1000000).toFixed(2)}M volume</span>
             </div>
           </div>
         </div>
