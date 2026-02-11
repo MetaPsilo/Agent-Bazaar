@@ -10,6 +10,15 @@ const { x402Protect, handlePaymentSubmission, calculateFeeSplit } = require("./x
 const { createJob, getJob, updateJobProgress, completeJob, failJob, getJobStatus, STATUS } = require("./job-queue");
 const { initPaymentCache } = require("./payment-cache");
 
+// Timing-safe string comparison to prevent timing attacks on tokens
+function safeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 const {
   generalRateLimit,
   paymentRateLimit,
@@ -242,11 +251,23 @@ function startHealthChecks() {
 
 // WebSocket setup with security
 const server = http.createServer(app);
+const ALLOWED_ORIGINS = new Set([
+  'https://agentbazaar.org',
+  'https://www.agentbazaar.org',
+  'https://agent-bazaar-production.up.railway.app',
+  'http://localhost:5173',  // Vite dev
+  'http://localhost:3000',  // Local prod
+]);
+
 const wss = new WebSocketServer({ 
   server, 
   path: "/ws",
   maxPayload: 16 * 1024,
   perMessageDeflate: false,
+  verifyClient: ({ origin }) => {
+    if (!origin) return true; // Non-browser clients (curl, agents)
+    return ALLOWED_ORIGINS.has(origin);
+  },
 });
 
 const wsClients = new Map();
@@ -692,7 +713,7 @@ app.get("/jobs/:id/result", (req, res) => {
     return res.status(401).json({ error: "Authorization required. Include Bearer <accessToken> header." });
   }
   const providedToken = authHeader.substring(7);
-  if (providedToken !== job.accessToken) {
+  if (!safeEqual(providedToken, job.accessToken)) {
     return res.status(403).json({ error: "Invalid access token" });
   }
 
@@ -761,7 +782,7 @@ app.post("/jobs/:id/webhook", (req, res) => {
     return res.status(401).json({ error: "Authorization required to register webhooks" });
   }
   const webhookToken = webhookAuth.substring(7);
-  if (webhookToken !== job.accessToken) {
+  if (!safeEqual(webhookToken, job.accessToken)) {
     return res.status(403).json({ error: "Invalid access token" });
   }
   job.webhookUrl = url;
@@ -1520,7 +1541,7 @@ app.put("/agents/:id/services", [
 app.patch("/admin/agents/:id", async (req, res) => {
   try {
     const adminToken = req.headers["x-admin-token"];
-    if (!adminToken || adminToken !== process.env.TOKEN_SECRET) {
+    if (!adminToken || !safeEqual(adminToken, process.env.TOKEN_SECRET || '')) {
       return res.status(403).json({ error: "Forbidden" });
     }
     

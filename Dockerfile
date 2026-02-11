@@ -23,6 +23,11 @@ COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 ENV NODE_ENV=production
 ENV PORT=3000
 
+# Run as non-root for security
+RUN addgroup -S app && adduser -S app -G app
+RUN chown -R app:app /app
+USER app
+
 WORKDIR /app/api
 
 EXPOSE 3000
