@@ -1203,6 +1203,57 @@ app.put("/agents/:id", [
   }
 });
 
+// ============================================================
+// ADMIN ENDPOINTS (protected by TOKEN_SECRET)
+// ============================================================
+app.patch("/admin/agents/:id", async (req, res) => {
+  try {
+    const adminToken = req.headers["x-admin-token"];
+    if (!adminToken || adminToken !== process.env.TOKEN_SECRET) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    
+    const agentId = parseInt(req.params.id);
+    if (isNaN(agentId) || agentId < 0) {
+      return res.status(400).json({ error: "Invalid agent ID" });
+    }
+    
+    const allowedFields = ["callback_url", "name", "description", "agent_uri", "active"];
+    const updates = [];
+    const values = [];
+    let paramIdx = 1;
+    
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        updates.push(`${field} = $${paramIdx++}`);
+        values.push(req.body[field]);
+      }
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
+    
+    updates.push(`updated_at = $${paramIdx++}`);
+    values.push(Math.floor(Date.now() / 1000));
+    values.push(agentId);
+    
+    const result = await pool.query(
+      `UPDATE agents SET ${updates.join(", ")} WHERE agent_id = $${paramIdx} RETURNING agent_id, name, callback_url`,
+      values
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Agent not found" });
+    }
+    
+    res.json({ success: true, agent: result.rows[0] });
+  } catch (error) {
+    console.error("Admin update error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
 // Health
 app.get("/health", (_, res) => res.json({ status: "ok" }));
 
