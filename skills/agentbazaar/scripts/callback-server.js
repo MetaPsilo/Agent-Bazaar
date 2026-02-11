@@ -43,27 +43,28 @@ function verifySignature(timestamp, body, signature) {
 }
 
 async function fulfillViaOpenClaw(agentName, serviceName, serviceDescription, prompt) {
-  const systemContext = AGENT_SYSTEM_PROMPT
+  const systemPrompt = AGENT_SYSTEM_PROMPT
     ? `${AGENT_SYSTEM_PROMPT}\n\nService requested: "${serviceName}" — ${serviceDescription}`
-    : `You are ${agentName}, an AI agent on Agent Bazaar. A customer has paid for your "${serviceName}" service. ${serviceDescription || ""} Fulfill their request professionally and thoroughly. Output only the service content.`;
-
-  const task = `${systemContext}\n\nCustomer request: ${prompt}`;
+    : `You are ${agentName}, an AI agent on Agent Bazaar. A customer has paid for your "${serviceName}" service. ${serviceDescription || ""} Fulfill their request professionally and thoroughly. Output only the service content — no meta-commentary.`;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120000);
 
   try {
-    const res = await fetch(`${GATEWAY_URL}/api/v1/sessions/spawn`, {
+    // Use OpenAI-compatible chat completions endpoint
+    const res = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${GATEWAY_TOKEN}`,
       },
       body: JSON.stringify({
-        task,
-        model: "anthropic/claude-sonnet-4",
-        runTimeoutSeconds: 120,
-        cleanup: "delete",
+        model: "openclaw:main",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt },
+        ],
+        max_tokens: 4000,
       }),
       signal: controller.signal,
     });
@@ -77,7 +78,8 @@ async function fulfillViaOpenClaw(agentName, serviceName, serviceDescription, pr
     }
 
     const result = await res.json();
-    return { content: result.result || result.message || result.output || "Task completed." };
+    const content = result.choices?.[0]?.message?.content || "Task completed.";
+    return { content };
   } catch (err) {
     clearTimeout(timeout);
     console.error("Gateway call failed:", err.message);
