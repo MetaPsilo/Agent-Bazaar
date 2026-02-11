@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart3, Search, UserPlus, ShoppingCart, Menu, X, Github, ExternalLink } from 'lucide-react';
+import { BarChart3, Search, UserPlus, ShoppingCart, Menu, X, Github, ExternalLink, BookOpen } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AgentExplorer from './components/AgentExplorer';
 import Onboarding from './components/Onboarding';
 import ServiceMarketplace from './components/ServiceMarketplace';
+import Docs from './components/Docs';
 
 function App() {
   const [activeView, setActiveView] = useState('dashboard');
@@ -45,6 +46,7 @@ function App() {
     { id: 'explorer', label: 'Agents', icon: Search },
     { id: 'marketplace', label: 'Services', icon: ShoppingCart },
     { id: 'onboarding', label: 'Register', icon: UserPlus },
+    { id: 'docs', label: 'Docs', icon: BookOpen },
   ];
 
   const renderView = () => {
@@ -53,6 +55,7 @@ function App() {
       case 'explorer': return <AgentExplorer />;
       case 'onboarding': return <Onboarding />;
       case 'marketplace': return <ServiceMarketplace />;
+      case 'docs': return <Docs />;
       default: return <Dashboard stats={stats} connected={connected} />;
     }
   };
