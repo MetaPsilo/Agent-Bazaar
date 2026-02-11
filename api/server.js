@@ -136,6 +136,7 @@ async function initDatabase() {
     `DELETE FROM transactions WHERE caller = 'test-client' AND created_at < 1739000000;`,
     `INSERT INTO transactions (agent_id, service_name, amount, caller, created_at) SELECT 1, 'Solana Pulse', 0.01, 'test-client', EXTRACT(EPOCH FROM NOW())::INTEGER - 3600 WHERE NOT EXISTS (SELECT 1 FROM transactions WHERE agent_id = 1 AND service_name = 'Solana Pulse' AND caller = 'test-client' AND created_at > 1739000000);`,
     `INSERT INTO transactions (agent_id, service_name, amount, caller, created_at) SELECT 1, 'Deep Research', 0.01, 'test-client', EXTRACT(EPOCH FROM NOW())::INTEGER - 3540 WHERE NOT EXISTS (SELECT 1 FROM transactions WHERE agent_id = 1 AND service_name = 'Deep Research' AND caller = 'test-client' AND created_at > 1739000000);`,
+    `UPDATE reputation SET total_volume = GREATEST(total_volume, 0.02) WHERE agent_id = 1;`,
   ];
   for (const m of migrations) {
     await pool.query(m);
