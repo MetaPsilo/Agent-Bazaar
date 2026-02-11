@@ -7,6 +7,9 @@ import bs58 from 'bs58';
 
 const EditAgent = ({ agent, onClose, onSaved }) => {
   const { publicKey, signMessage, connected } = useWallet();
+  const [verified, setVerified] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState(null);
   const [form, setForm] = useState({
     name: agent.name || '',
     description: agent.description || '',
@@ -16,7 +19,27 @@ const EditAgent = ({ agent, onClose, onSaved }) => {
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState(null);
 
-  const isOwner = connected && publicKey && publicKey.toBase58() === agent.owner;
+  const walletMatches = connected && publicKey && publicKey.toBase58() === agent.owner;
+
+  const verifyOwnership = async () => {
+    if (!publicKey || !signMessage) return;
+    setVerifying(true);
+    setVerifyError(null);
+    try {
+      const challenge = `verify-owner:${agent.agent_id}:${Math.floor(Date.now() / 1000)}`;
+      const messageBytes = new TextEncoder().encode(challenge);
+      await signMessage(messageBytes);
+      setVerified(true);
+    } catch (e) {
+      if (e.message?.includes('User rejected')) {
+        setVerifyError('Signature rejected — you must sign to prove ownership.');
+      } else {
+        setVerifyError(e.message || 'Verification failed');
+      }
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   const inputClass = 'w-full px-4 py-3 bg-surface border border-border rounded-xl text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent focus:outline-none transition-colors';
 
@@ -108,7 +131,7 @@ const EditAgent = ({ agent, onClose, onSaved }) => {
             <Wallet className="w-5 h-5 text-accent" />
             <span className="text-sm font-medium">Connect the owner wallet to edit</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 flex-wrap">
             <WalletMultiButton style={{
               backgroundColor: 'var(--color-accent, #3b82f6)',
               borderRadius: '0.75rem',
@@ -116,25 +139,38 @@ const EditAgent = ({ agent, onClose, onSaved }) => {
               fontSize: '14px',
               fontFamily: 'inherit',
             }} />
-            {connected && (
-              <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${
-                isOwner
-                  ? 'bg-success/10 text-success border border-success/20'
-                  : 'bg-danger/10 text-danger border border-danger/20'
-              }`}>
-                {isOwner ? '✓ Owner verified' : '✗ Not the owner wallet'}
+            {walletMatches && !verified && (
+              <button
+                onClick={verifyOwnership}
+                disabled={verifying}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium bg-warning/10 border border-warning/30 text-warning hover:bg-warning/20 transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                {verifying ? <><Loader2 className="w-4 h-4 animate-spin" /> Signing...</> : '🔐 Verify Ownership'}
+              </button>
+            )}
+            {verified && (
+              <span className="text-xs px-3 py-1.5 rounded-full font-medium bg-success/10 text-success border border-success/20">
+                ✓ Ownership proven
+              </span>
+            )}
+            {connected && !walletMatches && (
+              <span className="text-xs px-3 py-1.5 rounded-full font-medium bg-danger/10 text-danger border border-danger/20">
+                ✗ Not the owner wallet
               </span>
             )}
           </div>
-          {connected && !isOwner && (
+          {connected && !walletMatches && (
             <p className="text-xs text-text-tertiary mt-2">
               Connected: {publicKey?.toBase58().slice(0, 8)}... — Owner: {agent.owner?.slice(0, 8)}...
             </p>
           )}
+          {verifyError && (
+            <p className="text-xs text-danger mt-2">{verifyError}</p>
+          )}
         </div>
 
         {/* Form — only enabled if owner */}
-        <div className={`space-y-6 ${!isOwner ? 'opacity-40 pointer-events-none' : ''}`}>
+        <div className={`space-y-6 ${!verified ? 'opacity-40 pointer-events-none' : ''}`}>
           <div>
             <label className="block text-sm font-medium mb-2">Name</label>
             <input type="text" className={inputClass} value={form.name} onChange={e => update('name', e.target.value)} maxLength={64} />
@@ -211,7 +247,7 @@ const EditAgent = ({ agent, onClose, onSaved }) => {
           {/* Save button */}
           <button
             onClick={handleSave}
-            disabled={saving || !isOwner}
+            disabled={saving || !verified}
             className="w-full bg-accent hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
           >
             {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Signing & saving...</> : <><Save className="w-4 h-4" /> Save Changes</>}
