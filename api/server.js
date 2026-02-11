@@ -6,6 +6,7 @@ const { WebSocketServer } = require("ws");
 const Database = require("better-sqlite3");
 const path = require("path");
 const { x402Protect, handlePaymentSubmission, calculateFeeSplit } = require("./x402-facilitator");
+const { createJob, getJob, updateJobProgress, completeJob, failJob, getJobStatus, STATUS } = require("./job-queue");
 
 const {
   generalRateLimit,
@@ -234,6 +235,217 @@ app.get("/services/text-summary", x402Protect("25000", "HkrtQ8FGS2rkhCC11Z9gHaeM
     paymentInfo: req.x402Payment
   });
 });
+
+// ============================================================
+// ASYNC JOB SYSTEM
+// ============================================================
+
+// POST /jobs - Submit an async job (requires x402 payment)
+// Client sends input data + payment proof, gets back a job ID to poll
+app.post("/jobs", express.json({ limit: '10mb' }), (req, res) => {
+  try {
+    const { serviceId, agentId, input, paymentProof } = req.body;
+
+    if (!serviceId) {
+      return res.status(400).json({ error: "Missing serviceId" });
+    }
+
+    // For demo: create job without payment verification
+    // In production: verify paymentProof first via x402
+    const job = createJob(serviceId, agentId || 'demo', input || {}, {
+      signature: paymentProof?.signature || `demo_${Date.now()}`,
+      amount: paymentProof?.amount || 0,
+    });
+
+    // Simulate async processing for demo services
+    simulateJobProcessing(job);
+
+    broadcast({ type: 'job_created', jobId: job.id, serviceId, timestamp: Date.now() });
+
+    res.json({
+      jobId: job.id,
+      status: job.status,
+      message: 'Job created. Poll GET /jobs/:id/status for progress.',
+      statusUrl: `/jobs/${job.id}/status`,
+      resultUrl: `/jobs/${job.id}/result`,
+    });
+  } catch (error) {
+    console.error("Job creation error:", error);
+    res.status(500).json({ error: "Failed to create job" });
+  }
+});
+
+// GET /jobs/:id/status - Poll job status (free, no auth required)
+app.get("/jobs/:id/status", (req, res) => {
+  const job = getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: "Job not found" });
+  }
+  res.json(getJobStatus(job));
+});
+
+// GET /jobs/:id/result - Fetch job result (requires original access token)
+app.get("/jobs/:id/result", (req, res) => {
+  const job = getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: "Job not found" });
+  }
+
+  if (job.status !== STATUS.COMPLETED) {
+    return res.status(202).json({
+      error: "Job not complete",
+      status: job.status,
+      progress: job.progress,
+      progressMessage: job.progressMessage,
+    });
+  }
+
+  // Return binary result (file download)
+  if (job.resultBuffer) {
+    res.setHeader('Content-Type', job.resultContentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${job.resultFilename}"`);
+    return res.send(job.resultBuffer);
+  }
+
+  // Return JSON result
+  res.json({
+    jobId: job.id,
+    serviceId: job.serviceId,
+    result: job.result,
+    duration: job.completedAt - (job.startedAt || job.createdAt),
+    completedAt: job.completedAt,
+  });
+});
+
+// POST /jobs/:id/webhook - Register a webhook for job completion
+app.post("/jobs/:id/webhook", (req, res) => {
+  const job = getJob(req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: "Job not found" });
+  }
+  const { url } = req.body;
+  if (!url) {
+    return res.status(400).json({ error: "Missing webhook url" });
+  }
+  // Basic URL validation
+  try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('bad protocol');
+  } catch {
+    return res.status(400).json({ error: "Invalid webhook URL" });
+  }
+  job.webhookUrl = url;
+  res.json({ success: true, message: "Webhook registered" });
+});
+
+/**
+ * Simulate async job processing for demo services.
+ * In production, this would dispatch to the actual agent's processing pipeline.
+ */
+function simulateJobProcessing(job) {
+  const { serviceId, input } = job;
+
+  // Start processing after a short delay
+  setTimeout(() => {
+    updateJobProgress(job.id, 10, 'Processing started');
+    broadcast({ type: 'job_progress', jobId: job.id, progress: 10 });
+  }, 500);
+
+  switch (serviceId) {
+    case 'document-generation': {
+      // Simulate PDF-like document generation
+      const text = input?.text || input?.content || 'No content provided';
+      const title = input?.title || 'Generated Document';
+      const format = input?.format || 'markdown';
+
+      setTimeout(() => updateJobProgress(job.id, 30, 'Analyzing content'), 1000);
+      setTimeout(() => updateJobProgress(job.id, 60, 'Generating document'), 2500);
+      setTimeout(() => updateJobProgress(job.id, 80, 'Formatting output'), 4000);
+      setTimeout(() => {
+        // Generate a markdown document (in production: actual PDF via puppeteer/etc)
+        const doc = `# ${title}\n\n*Generated by Agent Bazaar*\n*${new Date().toISOString()}*\n\n---\n\n${text}\n\n---\n\n*This document was generated by an AI agent on the Agent Bazaar marketplace.*`;
+        
+        completeJob(job.id, Buffer.from(doc, 'utf-8'), {
+          contentType: format === 'pdf' ? 'application/pdf' : 'text/markdown',
+          filename: `${title.toLowerCase().replace(/\s+/g, '-')}.${format === 'pdf' ? 'pdf' : 'md'}`,
+        });
+        broadcast({ type: 'job_completed', jobId: job.id, serviceId });
+      }, 5000);
+      break;
+    }
+
+    case 'deep-research': {
+      // Simulate a longer research task
+      const topic = input?.topic || input?.query || 'general analysis';
+
+      setTimeout(() => updateJobProgress(job.id, 15, 'Gathering sources'), 2000);
+      setTimeout(() => updateJobProgress(job.id, 35, `Researching: ${topic}`), 5000);
+      setTimeout(() => updateJobProgress(job.id, 55, 'Cross-referencing data'), 8000);
+      setTimeout(() => updateJobProgress(job.id, 75, 'Synthesizing findings'), 11000);
+      setTimeout(() => updateJobProgress(job.id, 90, 'Writing report'), 14000);
+      setTimeout(() => {
+        completeJob(job.id, {
+          topic,
+          summary: `Comprehensive research report on "${topic}". This is a demo response — in production, the agent would perform real research using its tools and data sources.`,
+          keyFindings: [
+            'Finding 1: Market analysis indicates growth potential',
+            'Finding 2: Competitive landscape is fragmented',
+            'Finding 3: Technical feasibility confirmed',
+          ],
+          sources: [
+            { title: 'Source 1', url: 'https://example.com/source1' },
+            { title: 'Source 2', url: 'https://example.com/source2' },
+          ],
+          confidence: 0.85,
+          wordCount: 2500,
+        });
+        broadcast({ type: 'job_completed', jobId: job.id, serviceId });
+      }, 16000);
+      break;
+    }
+
+    case 'code-audit': {
+      // Simulate code analysis
+      const code = input?.code || input?.repositoryUrl || 'No code provided';
+
+      setTimeout(() => updateJobProgress(job.id, 20, 'Parsing code'), 1000);
+      setTimeout(() => updateJobProgress(job.id, 50, 'Running security analysis'), 3000);
+      setTimeout(() => updateJobProgress(job.id, 75, 'Generating report'), 5000);
+      setTimeout(() => {
+        completeJob(job.id, {
+          service: 'Code Audit',
+          vulnerabilities: [
+            { severity: 'medium', description: 'Unchecked arithmetic in line 42', recommendation: 'Use checked_add/checked_sub' },
+            { severity: 'low', description: 'Missing input validation', recommendation: 'Add require! checks' },
+          ],
+          score: 82,
+          summary: 'Overall code quality is good with minor improvements suggested.',
+          linesAnalyzed: typeof code === 'string' ? code.split('\n').length : 0,
+        });
+        broadcast({ type: 'job_completed', jobId: job.id, serviceId });
+      }, 7000);
+      break;
+    }
+
+    default: {
+      // Generic async task
+      setTimeout(() => updateJobProgress(job.id, 50, 'Processing'), 2000);
+      setTimeout(() => {
+        completeJob(job.id, {
+          service: serviceId,
+          message: 'Task completed',
+          input: Object.keys(input || {}),
+          timestamp: new Date().toISOString(),
+        });
+        broadcast({ type: 'job_completed', jobId: job.id, serviceId });
+      }, 4000);
+    }
+  }
+}
+
+// ============================================================
+// AGENT REGISTRY & DATA ENDPOINTS
+// ============================================================
 
 // GET /agents - list/search agents
 app.get("/agents", [
@@ -624,7 +836,8 @@ if (process.env.NODE_ENV === 'production') {
     if (!req.path.startsWith('/agents') && !req.path.startsWith('/stats') && 
         !req.path.startsWith('/leaderboard') && !req.path.startsWith('/search') &&
         !req.path.startsWith('/services') && !req.path.startsWith('/health') &&
-        !req.path.startsWith('/ws')) {
+        !req.path.startsWith('/ws') && !req.path.startsWith('/jobs') &&
+        !req.path.startsWith('/x402') && !req.path.startsWith('/feedback')) {
       res.sendFile(path.join(frontendPath, 'index.html'));
     }
   });
