@@ -956,12 +956,12 @@ app.get("/activity", async (req, res) => {
 
     // Recent feedback
     const { rows: fbs } = await pool.query(
-      `SELECT f.agent_id, f.rating, f.rater, f.timestamp, a.name FROM feedback f 
-       JOIN agents a ON a.agent_id = f.agent_id ORDER BY f.timestamp DESC LIMIT $1`, [limit]
+      `SELECT f.agent_id, f.rating, f.rater, f.created_at, a.name FROM feedback f 
+       JOIN agents a ON a.agent_id = f.agent_id ORDER BY f.created_at DESC LIMIT $1`, [limit]
     );
     fbs.forEach(f => activities.push({
       type: 'feedback', agent: f.name, agentId: f.agent_id, rating: f.rating, 
-      from: f.rater?.slice(0, 8) + '...', timestamp: f.timestamp
+      from: f.rater?.slice(0, 8) + '...', timestamp: f.created_at
     }));
 
     // Sort by timestamp descending, return top N
