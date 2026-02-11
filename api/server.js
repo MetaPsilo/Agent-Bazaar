@@ -1112,8 +1112,34 @@ app.post("/agents", registrationRateLimit, [
   handleValidationErrors
 ], async (req, res) => {
   try {
-    const { name, description = "", agentUri = "", callbackUrl = "", owner, agentWallet, services = [] } = req.body;
+    const { name, description = "", agentUri = "", callbackUrl = "", owner, agentWallet, services = [], authMessage, authSignature } = req.body;
     
+    // SECURITY: Verify ed25519 signature proving caller controls owner wallet
+    if (!authSignature || !authMessage) {
+      return res.status(400).json({ 
+        error: "Wallet ownership proof required",
+        required: { authMessage: "register-agent:<wallet>:<timestamp>", authSignature: "base58-encoded ed25519 signature" }
+      });
+    }
+    try {
+      const nacl = require('tweetnacl');
+      const ownerPubkey = new (require('@solana/web3.js').PublicKey)(owner);
+      const messageBytes = new TextEncoder().encode(authMessage);
+      const signatureBytes = bs58.decode(authSignature);
+      const isValid = nacl.sign.detached.verify(messageBytes, signatureBytes, ownerPubkey.toBytes());
+      if (!isValid) {
+        return res.status(403).json({ error: "Invalid wallet signature — ownership proof failed" });
+      }
+      // Check timestamp freshness (5 min window)
+      const parts = authMessage.split(':');
+      const msgTimestamp = parseInt(parts[parts.length - 1]);
+      if (isNaN(msgTimestamp) || Math.abs(Math.floor(Date.now() / 1000) - msgTimestamp) > 300) {
+        return res.status(403).json({ error: "Signature expired — must be within 5 minutes" });
+      }
+    } catch (sigErr) {
+      return res.status(403).json({ error: "Signature verification failed: " + sigErr.message });
+    }
+
     // SECURITY: Validate callbackUrl against SSRF
     if (callbackUrl) {
       const urlCheck = validateCallbackUrl(callbackUrl);
