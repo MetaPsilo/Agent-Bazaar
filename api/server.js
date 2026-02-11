@@ -1014,7 +1014,7 @@ app.post("/agents", registrationRateLimit, [
   validateString('name', 64),
   validateString('description', 512),
   body('agentUri').optional().isURL().withMessage('Invalid agent URI'),
-  body('callbackUrl').isURL().withMessage('Callback URL is required and must be a valid URL'),
+  body('callbackUrl').isURL({ require_tld: false }).withMessage('Callback URL is required and must be a valid URL'),
   body('services').optional().isArray({ max: 20 }).withMessage('Services must be an array (max 20)'),
   validatePubkey('owner'),
   validatePubkey('agentWallet').optional(),
