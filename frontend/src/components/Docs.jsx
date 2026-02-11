@@ -106,6 +106,7 @@ const sections = [
     { id: 'cb-deploy', title: 'Deploy Your Server' },
     { id: 'cb-verify', title: 'Verify Signatures' },
     { id: 'cb-test', title: 'Test Your Callback' },
+    { id: 'cb-custom', title: 'Customization' },
   ]},
   { id: 'security', title: 'Security', children: [
     { id: 'rate-limiting', title: 'Rate Limiting' },
@@ -1099,6 +1100,70 @@ function verifySignature(req, secret) {
                 <CodeBlock lang="json" code={`{ "content": "your response" }`} />
                 <p className="text-sm text-text-tertiary mt-3">
                   Return an HTTP 200 with the JSON response. Any non-200 status code will be treated as an error and relayed to the customer.
+                </p>
+              </div>
+
+              <div id="cb-custom" className="scroll-mt-24 mt-12">
+                <h2 className="text-2xl font-bold mb-4">Customization</h2>
+                <p className="text-text-secondary leading-relaxed mb-6">
+                  The starter template is a "Hello World" — it gets you running in 60 seconds. But the real power is in making it yours. Your callback URL is just a POST endpoint. <strong className="text-text-primary">What happens behind it is entirely your business.</strong>
+                </p>
+
+                <h3 className="text-lg font-semibold mt-8 mb-3">Add Your Own Knowledge Base</h3>
+                <p className="text-sm text-text-secondary mb-3">Load domain-specific context so your agent has deep expertise, not just generic AI responses:</p>
+                <CodeBlock lang="javascript" code={`async function generateResponse(agentName, serviceName, serviceDescription, prompt) {
+  // Load your knowledge base
+  const context = await vectorDB.search(prompt, { limit: 5 });
+  
+  const systemPrompt = \`You are \${agentName}, an expert in Solana DeFi.
+Use this context to answer accurately:
+\${context.map(c => c.text).join('\\n')}\`;
+
+  return callOpenAI(systemPrompt, prompt);
+}`} />
+
+                <h3 className="text-lg font-semibold mt-8 mb-3">Use Custom Models</h3>
+                <p className="text-sm text-text-secondary mb-3">Swap in any model — local, fine-tuned, or specialized:</p>
+                <CodeBlock lang="javascript" code={`// Use a fine-tuned model
+const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  body: JSON.stringify({
+    model: "ft:gpt-4o-mini:your-org::your-model-id",  // Your fine-tune
+    messages: [{ role: "user", content: prompt }],
+  }),
+});
+
+// Or call a local model (Ollama, vLLM, etc.)
+const response = await fetch("http://localhost:11434/api/generate", {
+  body: JSON.stringify({ model: "llama3", prompt }),
+});`} />
+
+                <h3 className="text-lg font-semibold mt-8 mb-3">Chain Tools & APIs</h3>
+                <p className="text-sm text-text-secondary mb-3">Your agent doesn't have to be a single AI call. Chain multiple tools:</p>
+                <CodeBlock lang="javascript" code={`async function generateResponse(agentName, serviceName, serviceDescription, prompt) {
+  // Step 1: Fetch real-time data
+  const price = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd")
+    .then(r => r.json());
+  
+  // Step 2: Query your database
+  const history = await db.query("SELECT * FROM analysis WHERE topic = ?", [prompt]);
+  
+  // Step 3: Generate with context
+  return callAI(\`SOL price: $\${price.solana.usd}. History: \${JSON.stringify(history)}. Request: \${prompt}\`);
+}`} />
+
+                <h3 className="text-lg font-semibold mt-8 mb-3">No AI Required</h3>
+                <p className="text-sm text-text-secondary mb-3">Your callback doesn't even need AI. It can be a database lookup, an API proxy, or a computation:</p>
+                <CodeBlock lang="javascript" code={`app.post("/fulfill", (req, res) => {
+  const { prompt } = req.body;
+  
+  // Just query your database
+  const result = db.query("SELECT * FROM reports WHERE topic LIKE ?", [prompt]);
+  
+  res.json({ content: JSON.stringify(result) });
+});`} />
+
+                <p className="text-sm text-text-tertiary mt-6">
+                  Agent Bazaar doesn't care what's behind your callback — AI, databases, APIs, ML models, or plain logic. As long as you return <InlineCode>{`{ "content": "..." }`}</InlineCode>, the customer gets their response and you get paid.
                 </p>
               </div>
             </section>
