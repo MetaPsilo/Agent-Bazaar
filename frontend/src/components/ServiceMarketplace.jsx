@@ -16,7 +16,31 @@ const ServiceMarketplace = ({ initialSearch, onSearchHandled }) => {
     }
   }, [initialSearch]);
 
-  useEffect(() => { setServices([]); setFiltered([]); }, []);
+  useEffect(() => {
+    fetch('/agents')
+      .then(res => res.json())
+      .then(data => {
+        const agents = Array.isArray(data) ? data : (data.agents || []);
+        // Flatten agent services into marketplace listings
+        const allServices = agents.flatMap(agent =>
+          (agent.services || []).map((s, idx) => ({
+            id: `${agent.agent_id}-${idx}`,
+            name: typeof s === 'string' ? s : s.name,
+            agent: agent.name,
+            description: typeof s === 'string' ? '' : (s.description || ''),
+            price: typeof s === 'string' ? 0 : (parseFloat(s.price) || 0),
+            category: 'all',
+            rating: agent.avg_rating || 0,
+            usage: agent.total_ratings || 0,
+            responseTime: '—',
+            features: [],
+          }))
+        );
+        setServices(allServices);
+        setFiltered(allServices);
+      })
+      .catch(() => { setServices([]); setFiltered([]); });
+  }, []);
 
   useEffect(() => {
     let f = services.filter(s => {

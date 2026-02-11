@@ -12,10 +12,29 @@ const Dashboard = ({ stats, connected }) => {
   useEffect(() => {
     fetch('/leaderboard?limit=10')
       .then(res => res.json())
-      .then(data => setLeaderboard(data))
+      .then(data => setLeaderboard(Array.isArray(data) ? data : []))
       .catch(console.error);
 
-    setActivities([]);
+    // Connect to WebSocket for live activity feed
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const activity = {
+          id: Date.now(),
+          type: data.type,
+          agent: data.name || data.agentName || '',
+          from: data.from,
+          to: data.to,
+          amount: data.amount,
+          rating: data.rating,
+          timestamp: (data.timestamp || Math.floor(Date.now() / 1000)) * 1000,
+        };
+        setActivities(prev => [activity, ...prev.slice(0, 19)]);
+      } catch {}
+    };
+    return () => ws.close();
   }, []);
 
   const formatVolume = (v) => {

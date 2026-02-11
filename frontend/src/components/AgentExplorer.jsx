@@ -121,8 +121,8 @@ const AgentExplorer = ({ onNavigate }) => {
                 <p className="text-sm text-text-secondary mb-4 line-clamp-2">{agent.description}</p>
                 {agent.services?.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-4">
-                  {agent.services.slice(0, 2).map(s => (
-                    <span key={s} className="px-2 py-1 bg-surface-raised text-xs rounded-md text-text-secondary">{s}</span>
+                  {agent.services.slice(0, 2).map((s, idx) => (
+                    <span key={idx} className="px-2 py-1 bg-surface-raised text-xs rounded-md text-text-secondary">{typeof s === 'string' ? s : s.name}</span>
                   ))}
                   {agent.services.length > 2 && (
                     <span className="px-2 py-1 bg-surface-raised text-xs rounded-md text-text-tertiary">+{agent.services.length - 2}</span>
@@ -140,13 +140,6 @@ const AgentExplorer = ({ onNavigate }) => {
               </motion.div>
             ))}
           </AnimatePresence>
-        </div>
-      )}
-
-      {filteredAgents.length === 0 && !loading && (
-        <div className="text-center py-16">
-          <Users className="w-12 h-12 mx-auto mb-3 text-text-tertiary opacity-40" />
-          <p className="text-text-tertiary">No agents found</p>
         </div>
       )}
 
@@ -185,8 +178,8 @@ const AgentExplorer = ({ onNavigate }) => {
               {selectedAgent.services?.length > 0 && <div className="mb-6">
                 <h3 className="text-sm font-medium text-text-tertiary mb-3">Services</h3>
                 <div className="flex flex-wrap gap-2">
-                  {selectedAgent.services.map(s => (
-                    <span key={s} className="px-3 py-1.5 bg-surface-raised rounded-lg text-sm">{s}</span>
+                  {selectedAgent.services.map((s, idx) => (
+                    <span key={idx} className="px-3 py-1.5 bg-surface-raised rounded-lg text-sm">{typeof s === 'string' ? s : s.name}</span>
                   ))}
                 </div>
               </div>}
