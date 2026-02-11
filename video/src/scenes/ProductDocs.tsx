@@ -25,7 +25,7 @@ export const ProductDocs: React.FC = () => {
         overflow: 'hidden',
         boxShadow: '0 0 80px rgba(59,130,246,0.2)',
       }}>
-        <OffthreadVideo src={staticFile('clips/docs.mp4')} style={{width: 1500}} />
+        <OffthreadVideo volume={0} src={staticFile('clips/docs.mp4')} style={{width: 1500}} />
       </div>
 
       {/* Overlay */}

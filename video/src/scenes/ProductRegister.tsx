@@ -20,7 +20,7 @@ export const ProductRegister: React.FC = () => {
         overflow: 'hidden',
         boxShadow: '0 0 80px rgba(59,130,246,0.2)',
       }}>
-        <OffthreadVideo
+        <OffthreadVideo volume={0}
           src={staticFile('clips/register.mp4')}
           startFrom={40}
           style={{width: 1600}}
