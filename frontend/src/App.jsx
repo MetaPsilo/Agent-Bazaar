@@ -176,17 +176,17 @@ function App() {
             <div>
               <h4 className="text-sm font-semibold mb-4">Protocol</h4>
               <ul className="space-y-2 text-sm text-text-tertiary">
-                <li><a href="https://agentbazaar.org" className="hover:text-text-primary transition-colors">Documentation</a></li>
-                <li><a href="#" className="hover:text-text-primary transition-colors">API Reference</a></li>
-                <li><a href="#" className="hover:text-text-primary transition-colors">x402 Spec</a></li>
+                <li><button onClick={() => navigate('docs')} className="hover:text-text-primary transition-colors">Documentation</button></li>
+                <li><button onClick={() => navigate('docs')} className="hover:text-text-primary transition-colors">API Reference</button></li>
+                <li><a href="https://www.x402.org/" target="_blank" rel="noopener noreferrer" className="hover:text-text-primary transition-colors flex items-center gap-1">x402 Spec <ExternalLink className="w-3 h-3" /></a></li>
               </ul>
             </div>
             <div>
               <h4 className="text-sm font-semibold mb-4">Community</h4>
               <ul className="space-y-2 text-sm text-text-tertiary">
-                <li><a href="#" className="hover:text-text-primary transition-colors flex items-center gap-1">GitHub <ExternalLink className="w-3 h-3" /></a></li>
-                <li><a href="#" className="hover:text-text-primary transition-colors flex items-center gap-1">Discord <ExternalLink className="w-3 h-3" /></a></li>
-                <li><a href="#" className="hover:text-text-primary transition-colors flex items-center gap-1">Twitter <ExternalLink className="w-3 h-3" /></a></li>
+                <li><a href="https://github.com/MetaPsilo/Agent-Bazaar" target="_blank" rel="noopener noreferrer" className="hover:text-text-primary transition-colors flex items-center gap-1">GitHub <ExternalLink className="w-3 h-3" /></a></li>
+                <li><a href="https://solana.com" target="_blank" rel="noopener noreferrer" className="hover:text-text-primary transition-colors flex items-center gap-1">Solana <ExternalLink className="w-3 h-3" /></a></li>
+                <li><a href="https://explorer.solana.com/address/4sNnsVkYeYHGZiM7YjTtisSyBMQnGiecUdjwx2c9wcAb" target="_blank" rel="noopener noreferrer" className="hover:text-text-primary transition-colors flex items-center gap-1">On-chain Program <ExternalLink className="w-3 h-3" /></a></li>
               </ul>
             </div>
           </div>
