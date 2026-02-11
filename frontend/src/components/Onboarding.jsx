@@ -8,6 +8,7 @@ const Onboarding = () => {
   const [deployResult, setDeployResult] = useState(null);
   const [errors, setErrors] = useState({});
   const [callbackTest, setCallbackTest] = useState(null); // null | 'testing' | 'success' | 'error'
+  const [callbackVerified, setCallbackVerified] = useState(false);
   const [form, setForm] = useState({
     name: '', description: '',
     services: [{ name: '', description: '', price: '' }],
@@ -25,6 +26,7 @@ const Onboarding = () => {
   const update = (field, value) => {
     setForm(p => ({ ...p, [field]: value }));
     setErrors(p => ({ ...p, [field]: null }));
+    if (field === 'callbackUrl') { setCallbackVerified(false); setCallbackTest(null); }
   };
   const updateService = (i, field, value) => {
     const s = [...form.services];
@@ -48,6 +50,7 @@ const Onboarding = () => {
       else if (!isValidSolanaAddress(form.walletAddress.trim())) e.walletAddress = 'Invalid Solana address';
       if (!form.callbackUrl.trim()) e.callbackUrl = 'Callback URL is required';
       else { try { new URL(form.callbackUrl); } catch { e.callbackUrl = 'Invalid URL format'; } }
+      if (!callbackVerified) e.callbackUrl = e.callbackUrl || 'You must test your callback URL before proceeding';
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -191,7 +194,13 @@ const Onboarding = () => {
               {errors.callbackUrl && <p className="text-xs text-danger mt-1.5">{errors.callbackUrl}</p>}
               <p className="text-xs text-text-tertiary mt-2">When a customer pays for your service, we'll POST the request to this URL. Your server fulfills it and returns the response.</p>
               <p className="text-xs text-accent mt-1">📖 See "Callback Setup" in the Docs tab for a full walkthrough and starter template.</p>
-              {form.callbackUrl && (
+              {callbackVerified && (
+                <div className="flex items-center gap-2 mt-3 p-3 bg-success/10 border border-success/20 rounded-xl">
+                  <Check className="w-4 h-4 text-success" />
+                  <span className="text-sm text-success font-medium">Callback verified — your server is reachable</span>
+                </div>
+              )}
+              {form.callbackUrl && !callbackVerified && (
                 <div className="mt-3">
                   <button
                     onClick={async () => {
@@ -203,21 +212,24 @@ const Onboarding = () => {
                           body: JSON.stringify({ callbackUrl: form.callbackUrl }),
                         });
                         const data = await res.json();
-                        setCallbackTest(data.success ? 'success' : 'error');
-                      } catch { setCallbackTest('error'); }
-                      setTimeout(() => setCallbackTest(null), 5000);
+                        if (data.success) {
+                          setCallbackTest('success');
+                          setCallbackVerified(true);
+                        } else {
+                          setCallbackTest('error');
+                          setCallbackVerified(false);
+                        }
+                      } catch { setCallbackTest('error'); setCallbackVerified(false); }
                     }}
                     disabled={callbackTest === 'testing'}
-                    className="text-sm text-accent hover:text-accent-hover transition-colors flex items-center gap-1.5"
+                    className="w-full py-2.5 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 bg-surface-raised hover:bg-border text-text-primary disabled:opacity-50"
                   >
                     {callbackTest === 'testing' ? (
-                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Testing...</>
-                    ) : callbackTest === 'success' ? (
-                      <><Check className="w-3.5 h-3.5 text-success" /> Callback reachable!</>
+                      <><Loader2 className="w-4 h-4 animate-spin" /> Testing connection...</>
                     ) : callbackTest === 'error' ? (
-                      <><AlertCircle className="w-3.5 h-3.5 text-danger" /> Callback unreachable</>
+                      <><AlertCircle className="w-4 h-4 text-danger" /> Test failed — check your URL and try again</>
                     ) : (
-                      '🔗 Test callback URL'
+                      '🔗 Test Callback URL (required)'
                     )}
                   </button>
                 </div>
