@@ -68,8 +68,8 @@ function createJob(serviceId, agentId, input, paymentInfo) {
     completedAt: null,
     // SECURITY: Always use cryptographic random token (never derive from payment signature)
     accessToken: crypto.randomBytes(32).toString('hex'),
-    // Webhook URL for push notification (optional)
-    webhookUrl: input?.webhookUrl || null,
+    // Webhook URL for push notification (optional, must be set via /jobs/:id/webhook with auth)
+    webhookUrl: null,
     // Result content type (set by agent when completing)
     resultContentType: 'application/json',
     // Binary result (Buffer) for file responses

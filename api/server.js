@@ -116,6 +116,8 @@ async function initDatabase() {
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN services_json TEXT DEFAULT '[]'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;`,
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN callback_url TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;`,
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN callback_secret TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$;`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_agent_rater ON feedback (agent_id, rater);`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_tx_signature ON feedback (tx_signature) WHERE tx_signature IS NOT NULL;`,
   ];
   for (const m of migrations) {
     await pool.query(m);
@@ -224,6 +226,13 @@ const OPENCLAW_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 
 async function callAgentCallback(callbackUrl, agent, service, prompt, timeoutSeconds = 60) {
   try {
+    // SECURITY: Re-validate callbackUrl at call time (in case DB was manipulated)
+    const urlCheck = validateCallbackUrl(callbackUrl);
+    if (!urlCheck.valid) {
+      console.error(`Blocked SSRF attempt to ${callbackUrl}: ${urlCheck.error}`);
+      return { error: "Agent callback URL is invalid", fallback: true };
+    }
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
     
@@ -390,15 +399,45 @@ app.get("/services/agent/:agentId/:serviceIndex", async (req, res) => {
   }
 });
 
+// SECURITY: Validate callback URLs against SSRF
+function validateCallbackUrl(urlStr) {
+  try {
+    const parsed = new URL(urlStr);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return { valid: false, error: "URL must use HTTP or HTTPS" };
+    }
+    if (parsed.username || parsed.password) {
+      return { valid: false, error: "URL cannot contain credentials" };
+    }
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === 'localhost' || hostname === '0.0.0.0' || hostname === '127.0.0.1' ||
+        hostname === '[::1]' || hostname === '[0:0:0:0:0:0:0:1]' ||
+        hostname.endsWith('.localhost') || hostname === '0177.0.0.1' ||
+        hostname === '0x7f000001' || hostname === '0x7f.0.0.1' ||
+        hostname.startsWith('10.') || hostname.startsWith('192.168.') ||
+        hostname.startsWith('169.254.') ||
+        /^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname) ||
+        hostname.includes('::ffff:') ||
+        hostname === 'metadata.google.internal' ||
+        hostname === 'metadata.internal' ||
+        /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
+        /^\[/.test(hostname)) {
+      return { valid: false, error: "URL cannot target private/internal networks or IP addresses" };
+    }
+    return { valid: true, parsed };
+  } catch {
+    return { valid: false, error: "Invalid URL format" };
+  }
+}
+
 // Test a callback URL before registration
 app.post("/test-callback", generalRateLimit, async (req, res) => {
   const { callbackUrl } = req.body;
   if (!callbackUrl) return res.status(400).json({ error: "Missing callbackUrl" });
   
-  try {
-    new URL(callbackUrl);
-  } catch {
-    return res.json({ success: false, error: "Invalid URL format" });
+  const urlCheck = validateCallbackUrl(callbackUrl);
+  if (!urlCheck.valid) {
+    return res.json({ success: false, error: urlCheck.error });
   }
   
   try {
@@ -461,8 +500,16 @@ app.post("/jobs", paymentRateLimit, (req, res) => {
       return res.status(400).json({ error: "Missing serviceId" });
     }
 
+    // SECURITY: Require payment proof (demo sigs only in development)
+    if (!paymentProof?.signature) {
+      return res.status(402).json({ error: "Payment proof required. Submit a payment via /x402/pay first." });
+    }
+    if (process.env.NODE_ENV !== 'development' && paymentProof.signature.startsWith('demo_')) {
+      return res.status(402).json({ error: "Demo signatures not accepted in production" });
+    }
+
     const job = createJob(serviceId, agentId || 'demo', input || {}, {
-      signature: paymentProof?.signature || `demo_${Date.now()}`,
+      signature: paymentProof.signature,
       amount: paymentProof?.amount || 0,
     });
 
@@ -899,6 +946,15 @@ app.post("/feedback", [
       return res.status(403).json({ error: "Cannot rate your own agent" });
     }
 
+    // SECURITY: Prevent duplicate ratings from the same wallet
+    const { rows: existingFeedback } = await pool.query(
+      "SELECT id FROM feedback WHERE agent_id = $1 AND rater = $2 LIMIT 1",
+      [agentId, raterAddress]
+    );
+    if (existingFeedback.length > 0) {
+      return res.status(409).json({ error: "You have already rated this agent. One rating per wallet per agent." });
+    }
+
     const sanitizedAmount = Math.max(0, amountPaid || 0);
     const commentHash = comment ? require("crypto").createHash("sha256").update(comment).digest("hex") : null;
     const now = Math.floor(Date.now() / 1000);
@@ -908,10 +964,21 @@ app.post("/feedback", [
     try {
       await client.query('BEGIN');
 
+      // SECURITY: Prevent duplicate tx_signature (additional replay protection at DB level)
+      if (txSignature) {
+        const { rows: existingTx } = await client.query(
+          "SELECT id FROM feedback WHERE tx_signature = $1 LIMIT 1", [txSignature]
+        );
+        if (existingTx.length > 0) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: "Transaction signature already used for feedback" });
+        }
+      }
+
       // Insert feedback
       await client.query(
         "INSERT INTO feedback (agent_id, rater, rating, comment_hash, amount_paid, created_at, tx_signature) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-        [agentId, raterAddress || "api-user", rating, commentHash, sanitizedAmount, now, txSignature || null]
+        [agentId, raterAddress, rating, commentHash, sanitizedAmount, now, txSignature]
       );
 
       // Update reputation
@@ -975,6 +1042,14 @@ app.post("/agents", registrationRateLimit, [
   try {
     const { name, description = "", agentUri = "", callbackUrl = "", owner, agentWallet, services = [] } = req.body;
     
+    // SECURITY: Validate callbackUrl against SSRF
+    if (callbackUrl) {
+      const urlCheck = validateCallbackUrl(callbackUrl);
+      if (!urlCheck.valid) {
+        return res.status(400).json({ error: `Invalid callback URL: ${urlCheck.error}` });
+      }
+    }
+
     const callbackSecret = crypto.randomBytes(32).toString("hex");
     
     const sanitizedServices = services.slice(0, 20).map(s => ({

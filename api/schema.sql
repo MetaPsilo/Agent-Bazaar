@@ -46,6 +46,11 @@ CREATE TABLE IF NOT EXISTS protocol_stats (
 
 INSERT INTO protocol_stats (id) VALUES (1) ON CONFLICT DO NOTHING;
 
+-- SECURITY: Prevent duplicate ratings from the same wallet for the same agent
+CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_agent_rater ON feedback (agent_id, rater);
+-- SECURITY: Prevent reuse of tx signatures in feedback
+CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_tx_signature ON feedback (tx_signature) WHERE tx_signature IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS used_signatures (
   signature TEXT PRIMARY KEY,
   amount INTEGER,
