@@ -17,7 +17,12 @@ if (!process.env.TOKEN_SECRET) {
 // Constants
 const PLATFORM_FEE_BPS = parseInt(process.env.PLATFORM_FEE_BPS || "250");
 const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
-const USDC_MINT = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"); // Devnet USDC
+// Use mainnet USDC by default, devnet USDC if SOLANA_RPC_URL contains "devnet"
+const USDC_MINT = new PublicKey(
+  (process.env.SOLANA_RPC_URL || '').includes('devnet')
+    ? "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"   // Devnet USDC
+    : "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"   // Mainnet USDC
+);
 
 const connection = new Connection(SOLANA_RPC_URL, 'confirmed');
 

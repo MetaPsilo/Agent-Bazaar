@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Search, UserPlus, ShoppingCart, BarChart3, Users, Zap } from 'lucide-react';
+import { BarChart3, Search, UserPlus, ShoppingCart, Menu, X, Github, ExternalLink } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AgentExplorer from './components/AgentExplorer';
 import Onboarding from './components/Onboarding';
@@ -9,6 +9,7 @@ import ServiceMarketplace from './components/ServiceMarketplace';
 function App() {
   const [activeView, setActiveView] = useState('dashboard');
   const [connected, setConnected] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [stats, setStats] = useState({
     totalAgents: 0,
     totalTransactions: 0,
@@ -16,140 +17,142 @@ function App() {
     activeAgents: 0
   });
 
-  // Initialize WebSocket connection
   useEffect(() => {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
     
-    ws.onopen = () => {
-      setConnected(true);
-      console.log('WebSocket connected');
-    };
-    
-    ws.onclose = () => {
-      setConnected(false);
-      console.log('WebSocket disconnected');
-    };
-    
+    ws.onopen = () => setConnected(true);
+    ws.onclose = () => setConnected(false);
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         console.log('WebSocket event:', data);
-        // Handle real-time updates here
       } catch (error) {
         console.error('WebSocket message error:', error);
       }
     };
 
-    // Fetch initial stats
     fetch('/stats')
       .then(res => res.json())
       .then(data => setStats(data))
       .catch(console.error);
 
-    return () => {
-      ws.close();
-    };
+    return () => ws.close();
   }, []);
 
   const navigation = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-    { id: 'explorer', label: 'Agent Explorer', icon: Search },
-    { id: 'onboarding', label: 'Onboarding', icon: UserPlus },
+    { id: 'explorer', label: 'Agents', icon: Search },
     { id: 'marketplace', label: 'Services', icon: ShoppingCart },
+    { id: 'onboarding', label: 'Register', icon: UserPlus },
   ];
 
   const renderView = () => {
     switch (activeView) {
-      case 'dashboard':
-        return <Dashboard stats={stats} connected={connected} />;
-      case 'explorer':
-        return <AgentExplorer />;
-      case 'onboarding':
-        return <Onboarding />;
-      case 'marketplace':
-        return <ServiceMarketplace />;
-      default:
-        return <Dashboard stats={stats} connected={connected} />;
+      case 'dashboard': return <Dashboard stats={stats} connected={connected} />;
+      case 'explorer': return <AgentExplorer />;
+      case 'onboarding': return <Onboarding />;
+      case 'marketplace': return <ServiceMarketplace />;
+      default: return <Dashboard stats={stats} connected={connected} />;
     }
   };
 
+  const navigate = (id) => {
+    setActiveView(id);
+    setMobileMenuOpen(false);
+  };
+
   return (
-    <div className="min-h-screen bg-cyber-black text-white">
+    <div className="min-h-screen bg-primary text-text-primary">
       {/* Header */}
-      <motion.header
-        initial={{ y: -100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="glass border-b border-cyber-blue/30 sticky top-0 z-50 backdrop-blur-lg"
-      >
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+      <header className="sticky top-0 z-50 border-b border-border bg-primary/80 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <motion.div
-              className="flex items-center space-x-3"
-              whileHover={{ scale: 1.05 }}
-            >
-              <div className="relative">
-                <Zap className="h-8 w-8 text-cyber-blue" />
-                <div className="absolute inset-0 animate-ping">
-                  <Zap className="h-8 w-8 text-cyber-blue opacity-20" />
-                </div>
+            <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('dashboard')}>
+              <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
+                <span className="text-white font-bold text-sm">AB</span>
               </div>
-              <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-cyber-blue to-cyber-purple bg-clip-text text-transparent">
-                  Agent Bazaar
-                </h1>
-                <p className="text-xs text-cyber-blue/60">PERMISSIONLESS AI AGENT PROTOCOL</p>
-              </div>
-            </motion.div>
-
-            {/* Connection Status */}
-            <motion.div
-              className="flex items-center space-x-2"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-            >
-              <div className={`pulse-ring w-3 h-3 rounded-full ${connected ? 'bg-cyber-green' : 'bg-red-500'}`} />
-              <span className="text-sm font-mono">
-                {connected ? 'LIVE' : 'OFFLINE'}
-              </span>
-            </motion.div>
-          </div>
-
-          {/* Navigation */}
-          <nav className="mt-4">
-            <div className="flex space-x-1 bg-cyber-dark/30 rounded-lg p-1">
-              {navigation.map((item) => (
-                <motion.button
-                  key={item.id}
-                  onClick={() => setActiveView(item.id)}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-md font-mono text-sm transition-all ${
-                    activeView === item.id
-                      ? 'bg-cyber-blue/20 text-cyber-blue border border-cyber-blue/30'
-                      : 'text-white/70 hover:text-white hover:bg-white/5'
-                  }`}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <item.icon className="w-4 h-4" />
-                  <span>{item.label}</span>
-                </motion.button>
-              ))}
+              <span className="text-lg font-semibold tracking-tight">Agent Bazaar</span>
             </div>
-          </nav>
-        </div>
-      </motion.header>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+            {/* Desktop Nav */}
+            <nav className="hidden md:flex items-center gap-1">
+              {navigation.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => navigate(item.id)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    activeView === item.id
+                      ? 'bg-surface-raised text-text-primary'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-surface-raised/50'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+
+            {/* Right side */}
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${connected ? 'bg-success' : 'bg-danger'}`} />
+                <span className="text-xs font-mono text-text-tertiary hidden sm:inline">
+                  {connected ? 'Connected' : 'Offline'}
+                </span>
+              </div>
+
+              {/* Mobile menu button */}
+              <button
+                className="md:hidden p-2 rounded-lg hover:bg-surface-raised transition-colors"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              >
+                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile menu */}
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="md:hidden border-t border-border overflow-hidden"
+            >
+              <div className="px-4 py-3 space-y-1">
+                {navigation.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => navigate(item.id)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                      activeView === item.id
+                        ? 'bg-surface-raised text-text-primary'
+                        : 'text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    <item.icon className="w-4 h-4" />
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </header>
+
+      {/* Main */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeView}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.3 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.2 }}
           >
             {renderView()}
           </motion.div>
@@ -157,18 +160,45 @@ function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-cyber-blue/10 mt-20">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center justify-between text-sm text-white/50">
-            <div className="flex items-center space-x-4">
-              <span className="font-mono">Agent Bazaar v0.1.0</span>
-              <span>•</span>
-              <span>Built on Solana</span>
+      <footer className="border-t border-border mt-24">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+            <div className="md:col-span-2">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">AB</span>
+                </div>
+                <span className="text-lg font-semibold">Agent Bazaar</span>
+              </div>
+              <p className="text-text-tertiary text-sm leading-relaxed max-w-md">
+                The permissionless protocol for AI agent commerce. On-chain registry, reputation, and micropayments on Solana.
+              </p>
+              <p className="text-text-tertiary text-xs font-mono mt-4">
+                Program: 4sNnsVk...wcAb
+              </p>
             </div>
-            <div className="flex items-center space-x-4">
-              <span>Total Agents: {stats.totalAgents}</span>
-              <span>•</span>
-              <span>Volume: ${(stats.totalVolume / 1000000).toFixed(2)}M</span>
+            <div>
+              <h4 className="text-sm font-semibold mb-4">Protocol</h4>
+              <ul className="space-y-2 text-sm text-text-tertiary">
+                <li><a href="https://agentbazaar.org" className="hover:text-text-primary transition-colors">Documentation</a></li>
+                <li><a href="#" className="hover:text-text-primary transition-colors">API Reference</a></li>
+                <li><a href="#" className="hover:text-text-primary transition-colors">x402 Spec</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold mb-4">Community</h4>
+              <ul className="space-y-2 text-sm text-text-tertiary">
+                <li><a href="#" className="hover:text-text-primary transition-colors flex items-center gap-1">GitHub <ExternalLink className="w-3 h-3" /></a></li>
+                <li><a href="#" className="hover:text-text-primary transition-colors flex items-center gap-1">Discord <ExternalLink className="w-3 h-3" /></a></li>
+                <li><a href="#" className="hover:text-text-primary transition-colors flex items-center gap-1">Twitter <ExternalLink className="w-3 h-3" /></a></li>
+              </ul>
+            </div>
+          </div>
+          <div className="border-t border-border mt-8 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-text-tertiary">
+            <span>© 2025 Agent Bazaar. Built on Solana.</span>
+            <div className="flex items-center gap-6">
+              <span>{stats.totalAgents} agents registered</span>
+              <span>${(stats.totalVolume / 1000000).toFixed(2)}M volume</span>
             </div>
           </div>
         </div>

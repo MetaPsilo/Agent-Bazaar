@@ -1,346 +1,133 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Filter, Star, DollarSign, Activity, Eye, Zap, Users, TrendingUp } from 'lucide-react';
+import { Search, Star, DollarSign, Users, X } from 'lucide-react';
 
 const AgentExplorer = () => {
   const [agents, setAgents] = useState([]);
   const [filteredAgents, setFilteredAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedAgent, setSelectedAgent] = useState(null);
-  const [filters, setFilters] = useState({
-    search: '',
-    minRating: 0,
-    sort: 'rating',
-    category: 'all'
-  });
+  const [filters, setFilters] = useState({ search: '', minRating: 0, sort: 'rating', category: 'all' });
 
-  // Mock categories for demo
   const categories = [
     { id: 'all', name: 'All Agents' },
-    { id: 'research', name: 'Research & Analysis' },
-    { id: 'trading', name: 'Trading & DeFi' },
-    { id: 'development', name: 'Code & Development' },
-    { id: 'content', name: 'Content & Media' },
-    { id: 'monitoring', name: 'Monitoring & Alerts' }
+    { id: 'research', name: 'Research' },
+    { id: 'trading', name: 'Trading' },
+    { id: 'development', name: 'Development' },
+    { id: 'content', name: 'Content' },
+    { id: 'monitoring', name: 'Monitoring' },
   ];
 
-  // Mock agent data with realistic profiles
   const mockAgents = [
-    {
-      agent_id: 0,
-      name: 'MarketPulse AI',
-      description: 'Real-time Solana ecosystem monitoring with sentiment analysis across 500+ Twitter accounts, providing alpha signals and market insights.',
-      avg_rating: 4.8,
-      total_ratings: 127,
-      total_volume: 2450000,
-      category: 'research',
-      status: 'online',
-      services: ['Market Analysis', 'Alpha Signals', 'Sentiment Tracking'],
-      earnings: 1250.50,
-      lastActive: 'Just now'
-    },
-    {
-      agent_id: 1,
-      name: 'CodeReview Bot',
-      description: 'Automated code auditing and security analysis for Solana programs. Rust expertise with vulnerability detection.',
-      avg_rating: 4.9,
-      total_ratings: 89,
-      total_volume: 1890000,
-      category: 'development',
-      status: 'online',
-      services: ['Code Audit', 'Security Review', 'Gas Optimization'],
-      earnings: 945.20,
-      lastActive: '2m ago'
-    },
-    {
-      agent_id: 2,
-      name: 'DataOracle Pro',
-      description: 'Cross-chain data aggregation and analytics. Provides real-time price feeds, volume analysis, and DeFi protocol metrics.',
-      avg_rating: 4.7,
-      total_ratings: 203,
-      total_volume: 3200000,
-      category: 'research',
-      status: 'online',
-      services: ['Price Feeds', 'DeFi Analytics', 'Cross-chain Data'],
-      earnings: 1650.80,
-      lastActive: '1m ago'
-    },
-    {
-      agent_id: 3,
-      name: 'TradingBot Alpha',
-      description: 'Algorithmic trading strategies for Solana DeFi. MEV protection, arbitrage detection, and portfolio rebalancing.',
-      avg_rating: 4.6,
-      total_ratings: 156,
-      total_volume: 5670000,
-      category: 'trading',
-      status: 'busy',
-      services: ['Arbitrage Detection', 'Portfolio Management', 'MEV Protection'],
-      earnings: 2835.40,
-      lastActive: '5m ago'
-    },
-    {
-      agent_id: 4,
-      name: 'NFT Monitor',
-      description: 'Solana NFT collection tracking with rarity analysis, floor price monitoring, and mint opportunity alerts.',
-      avg_rating: 4.4,
-      total_ratings: 78,
-      total_volume: 890000,
-      category: 'monitoring',
-      status: 'online',
-      services: ['Rarity Analysis', 'Floor Tracking', 'Mint Alerts'],
-      earnings: 445.60,
-      lastActive: '3m ago'
-    },
-    {
-      agent_id: 5,
-      name: 'CryptoAnalyst Pro',
-      description: 'Deep fundamental analysis of Solana ecosystem projects. Token metrics, team analysis, and investment research.',
-      avg_rating: 4.5,
-      total_ratings: 92,
-      total_volume: 1340000,
-      category: 'research',
-      status: 'online',
-      services: ['Fundamental Analysis', 'Token Research', 'Investment Reports'],
-      earnings: 670.30,
-      lastActive: '7m ago'
-    }
+    { agent_id: 0, name: 'MarketPulse AI', description: 'Real-time Solana ecosystem monitoring with sentiment analysis across 500+ Twitter accounts.', avg_rating: 4.8, total_ratings: 127, total_volume: 2450000, category: 'research', status: 'online', services: ['Market Analysis', 'Alpha Signals', 'Sentiment Tracking'], earnings: 1250.50 },
+    { agent_id: 1, name: 'CodeReview Bot', description: 'Automated code auditing and security analysis for Solana programs with vulnerability detection.', avg_rating: 4.9, total_ratings: 89, total_volume: 1890000, category: 'development', status: 'online', services: ['Code Audit', 'Security Review', 'Gas Optimization'], earnings: 945.20 },
+    { agent_id: 2, name: 'DataOracle Pro', description: 'Cross-chain data aggregation and analytics with real-time price feeds and DeFi metrics.', avg_rating: 4.7, total_ratings: 203, total_volume: 3200000, category: 'research', status: 'online', services: ['Price Feeds', 'DeFi Analytics', 'Cross-chain Data'], earnings: 1650.80 },
+    { agent_id: 3, name: 'TradingBot Alpha', description: 'Algorithmic trading strategies for Solana DeFi with MEV protection and arbitrage detection.', avg_rating: 4.6, total_ratings: 156, total_volume: 5670000, category: 'trading', status: 'busy', services: ['Arbitrage Detection', 'Portfolio Management', 'MEV Protection'], earnings: 2835.40 },
+    { agent_id: 4, name: 'NFT Monitor', description: 'Solana NFT collection tracking with rarity analysis and floor price monitoring.', avg_rating: 4.4, total_ratings: 78, total_volume: 890000, category: 'monitoring', status: 'online', services: ['Rarity Analysis', 'Floor Tracking', 'Mint Alerts'], earnings: 445.60 },
+    { agent_id: 5, name: 'CryptoAnalyst Pro', description: 'Deep fundamental analysis of Solana ecosystem projects with token metrics and research.', avg_rating: 4.5, total_ratings: 92, total_volume: 1340000, category: 'research', status: 'online', services: ['Fundamental Analysis', 'Token Research', 'Investment Reports'], earnings: 670.30 },
   ];
 
   useEffect(() => {
-    // Simulate API call
     setLoading(true);
-    setTimeout(() => {
-      setAgents(mockAgents);
-      setFilteredAgents(mockAgents);
-      setLoading(false);
-    }, 1000);
+    setTimeout(() => { setAgents(mockAgents); setFilteredAgents(mockAgents); setLoading(false); }, 600);
   }, []);
 
   useEffect(() => {
-    let filtered = agents.filter(agent => {
-      // Search filter
-      if (filters.search && !agent.name.toLowerCase().includes(filters.search.toLowerCase()) && 
-          !agent.description.toLowerCase().includes(filters.search.toLowerCase())) {
-        return false;
-      }
-      
-      // Rating filter
-      if (filters.minRating > 0 && (agent.avg_rating || 0) < filters.minRating) {
-        return false;
-      }
-      
-      // Category filter
-      if (filters.category !== 'all' && agent.category !== filters.category) {
-        return false;
-      }
-      
+    let filtered = agents.filter(a => {
+      if (filters.search && !a.name.toLowerCase().includes(filters.search.toLowerCase()) && !a.description.toLowerCase().includes(filters.search.toLowerCase())) return false;
+      if (filters.minRating > 0 && (a.avg_rating || 0) < filters.minRating) return false;
+      if (filters.category !== 'all' && a.category !== filters.category) return false;
       return true;
     });
-
-    // Sort
     filtered.sort((a, b) => {
-      switch (filters.sort) {
-        case 'rating':
-          return (b.avg_rating || 0) - (a.avg_rating || 0);
-        case 'volume':
-          return (b.total_volume || 0) - (a.total_volume || 0);
-        case 'transactions':
-          return (b.total_ratings || 0) - (a.total_ratings || 0);
-        case 'earnings':
-          return (b.earnings || 0) - (a.earnings || 0);
-        default:
-          return 0;
-      }
+      if (filters.sort === 'rating') return (b.avg_rating || 0) - (a.avg_rating || 0);
+      if (filters.sort === 'volume') return (b.total_volume || 0) - (a.total_volume || 0);
+      return (b.total_ratings || 0) - (a.total_ratings || 0);
     });
-
     setFilteredAgents(filtered);
   }, [agents, filters]);
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'online': return 'bg-cyber-green';
-      case 'busy': return 'bg-cyber-purple';
-      case 'offline': return 'bg-gray-500';
-      default: return 'bg-cyber-blue';
-    }
-  };
+  const statusColor = (s) => s === 'online' ? 'bg-success' : s === 'busy' ? 'bg-warning' : 'bg-text-tertiary';
+  const statusLabel = (s) => s === 'online' ? 'Available' : s === 'busy' ? 'Busy' : 'Offline';
 
-  const getStatusText = (status) => {
-    switch (status) {
-      case 'online': return 'Available';
-      case 'busy': return 'Processing';
-      case 'offline': return 'Offline';
-      default: return 'Unknown';
-    }
-  };
+  const inputClass = 'w-full px-4 py-2.5 bg-surface border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:outline-none transition-colors';
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <motion.div
-        className="text-center"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <h1 className="text-4xl font-bold text-cyber-blue mb-4">Agent Explorer</h1>
-        <p className="text-white/70 max-w-2xl mx-auto">
-          Discover and connect with AI agents on the Solana network. Browse by capability, reputation, and pricing.
-        </p>
-      </motion.div>
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3">Agent Explorer</h1>
+        <p className="text-text-secondary text-lg">Discover and connect with AI agents on Solana.</p>
+      </div>
 
       {/* Filters */}
-      <motion.div
-        className="glass cyber-border p-6"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-      >
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-3 w-4 h-4 text-white/50" />
-            <input
-              type="text"
-              placeholder="Search agents..."
-              className="w-full pl-10 pr-4 py-2 bg-cyber-dark/50 border border-white/20 rounded-lg focus:border-cyber-blue focus:outline-none text-white"
-              value={filters.search}
-              onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-            />
-          </div>
-
-          {/* Category */}
-          <select
-            className="px-4 py-2 bg-cyber-dark/50 border border-white/20 rounded-lg focus:border-cyber-blue focus:outline-none text-white"
-            value={filters.category}
-            onChange={(e) => setFilters(prev => ({ ...prev, category: e.target.value }))}
-          >
-            {categories.map(cat => (
-              <option key={cat.id} value={cat.id} className="bg-cyber-dark">
-                {cat.name}
-              </option>
-            ))}
-          </select>
-
-          {/* Min Rating */}
-          <select
-            className="px-4 py-2 bg-cyber-dark/50 border border-white/20 rounded-lg focus:border-cyber-blue focus:outline-none text-white"
-            value={filters.minRating}
-            onChange={(e) => setFilters(prev => ({ ...prev, minRating: Number(e.target.value) }))}
-          >
-            <option value={0}>Any Rating</option>
-            <option value={4}>4+ Stars</option>
-            <option value={4.5}>4.5+ Stars</option>
-            <option value={4.8}>4.8+ Stars</option>
-          </select>
-
-          {/* Sort */}
-          <select
-            className="px-4 py-2 bg-cyber-dark/50 border border-white/20 rounded-lg focus:border-cyber-blue focus:outline-none text-white"
-            value={filters.sort}
-            onChange={(e) => setFilters(prev => ({ ...prev, sort: e.target.value }))}
-          >
-            <option value="rating">Highest Rated</option>
-            <option value="volume">Highest Volume</option>
-            <option value="transactions">Most Active</option>
-            <option value="earnings">Top Earners</option>
-          </select>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="relative">
+          <Search className="absolute left-3.5 top-3 w-4 h-4 text-text-tertiary" />
+          <input type="text" placeholder="Search agents..." className={`${inputClass} pl-10`} value={filters.search} onChange={(e) => setFilters(p => ({ ...p, search: e.target.value }))} />
         </div>
-      </motion.div>
+        <select className={inputClass} value={filters.category} onChange={(e) => setFilters(p => ({ ...p, category: e.target.value }))}>
+          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select className={inputClass} value={filters.minRating} onChange={(e) => setFilters(p => ({ ...p, minRating: Number(e.target.value) }))}>
+          <option value={0}>Any Rating</option>
+          <option value={4}>4+ Stars</option>
+          <option value={4.5}>4.5+ Stars</option>
+        </select>
+        <select className={inputClass} value={filters.sort} onChange={(e) => setFilters(p => ({ ...p, sort: e.target.value }))}>
+          <option value="rating">Highest Rated</option>
+          <option value="volume">Highest Volume</option>
+          <option value="transactions">Most Active</option>
+        </select>
+      </div>
 
-      {/* Agent Grid */}
+      {/* Grid */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(6)].map((_, i) => (
-            <motion.div
-              key={i}
-              className="glass p-6 animate-pulse"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: i * 0.1 }}
-            >
-              <div className="h-4 bg-cyber-blue/20 rounded mb-3"></div>
-              <div className="h-3 bg-white/10 rounded mb-2"></div>
-              <div className="h-3 bg-white/10 rounded mb-4 w-2/3"></div>
-              <div className="flex space-x-2">
-                <div className="h-6 bg-cyber-green/20 rounded w-16"></div>
-                <div className="h-6 bg-cyber-purple/20 rounded w-20"></div>
-              </div>
-            </motion.div>
+            <div key={i} className="bg-surface rounded-2xl border border-border p-6 animate-pulse">
+              <div className="h-5 bg-surface-raised rounded w-1/2 mb-3" />
+              <div className="h-4 bg-surface-raised rounded mb-2" />
+              <div className="h-4 bg-surface-raised rounded w-2/3" />
+            </div>
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <AnimatePresence>
-            {filteredAgents.map((agent, index) => (
+            {filteredAgents.map((agent, i) => (
               <motion.div
                 key={agent.agent_id}
-                className="glass cyber-border p-6 cursor-pointer hover:border-cyber-blue/50 transition-colors"
-                initial={{ opacity: 0, y: 20 }}
+                className="bg-surface rounded-2xl border border-border p-6 cursor-pointer hover:border-accent/30 transition-colors"
+                initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ delay: index * 0.1 }}
-                whileHover={{ scale: 1.02 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ delay: i * 0.05 }}
                 onClick={() => setSelectedAgent(agent)}
               >
-                {/* Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold text-white mb-1">{agent.name}</h3>
-                    <div className="flex items-center space-x-2 text-sm text-white/60">
-                      <div className={`w-2 h-2 rounded-full ${getStatusColor(agent.status)} pulse-ring`} />
-                      <span>{getStatusText(agent.status)}</span>
-                      <span>•</span>
-                      <span>{agent.lastActive}</span>
-                    </div>
+                <div className="flex items-start justify-between mb-3">
+                  <h3 className="font-semibold">{agent.name}</h3>
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-2 h-2 rounded-full ${statusColor(agent.status)}`} />
+                    <span className="text-xs text-text-tertiary">{statusLabel(agent.status)}</span>
                   </div>
-                  <Eye className="w-4 h-4 text-white/40" />
                 </div>
-
-                {/* Description */}
-                <p className="text-white/70 text-sm mb-4 line-clamp-3">{agent.description}</p>
-
-                {/* Services */}
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {agent.services.slice(0, 2).map((service) => (
-                    <span
-                      key={service}
-                      className="px-2 py-1 bg-cyber-blue/20 text-cyber-blue text-xs rounded-md font-mono"
-                    >
-                      {service}
-                    </span>
+                <p className="text-sm text-text-secondary mb-4 line-clamp-2">{agent.description}</p>
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  {agent.services.slice(0, 2).map(s => (
+                    <span key={s} className="px-2 py-1 bg-surface-raised text-xs rounded-md text-text-secondary">{s}</span>
                   ))}
                   {agent.services.length > 2 && (
-                    <span className="px-2 py-1 bg-white/10 text-white/60 text-xs rounded-md">
-                      +{agent.services.length - 2} more
-                    </span>
+                    <span className="px-2 py-1 bg-surface-raised text-xs rounded-md text-text-tertiary">+{agent.services.length - 2}</span>
                   )}
                 </div>
-
-                {/* Stats */}
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="text-center">
-                    <div className="flex items-center justify-center text-yellow-400 mb-1">
-                      <Star className="w-4 h-4 fill-current mr-1" />
-                      <span className="font-bold">{agent.avg_rating?.toFixed(1) || 'N/A'}</span>
-                    </div>
-                    <p className="text-xs text-white/50">{agent.total_ratings} reviews</p>
+                <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-1">
+                    <Star className="w-3.5 h-3.5 text-warning fill-warning" />
+                    <span className="font-medium">{agent.avg_rating?.toFixed(1)}</span>
+                    <span className="text-text-tertiary text-xs">({agent.total_ratings})</span>
                   </div>
-                  <div className="text-center">
-                    <div className="flex items-center justify-center text-cyber-green mb-1">
-                      <DollarSign className="w-4 h-4 mr-1" />
-                      <span className="font-bold">${agent.earnings?.toFixed(0) || '0'}</span>
-                    </div>
-                    <p className="text-xs text-white/50">Total earned</p>
-                  </div>
+                  <span className="text-text-tertiary font-mono text-xs">${((agent.total_volume || 0) / 1000000).toFixed(2)}M vol</span>
                 </div>
-
-                {/* Volume */}
-                <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-white/50">Volume:</span>
-                  <span className="text-cyber-purple">${((agent.total_volume || 0) / 1000000).toFixed(2)}M</span>
-                </div>
-
-{/* hover handled by parent cyber-border class */}
               </motion.div>
             ))}
           </AnimatePresence>
@@ -348,104 +135,74 @@ const AgentExplorer = () => {
       )}
 
       {filteredAgents.length === 0 && !loading && (
-        <motion.div
-          className="text-center py-12"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        >
-          <Users className="w-16 h-16 mx-auto mb-4 text-white/20" />
-          <h3 className="text-xl font-bold text-white/60 mb-2">No agents found</h3>
-          <p className="text-white/40">Try adjusting your search filters</p>
-        </motion.div>
+        <div className="text-center py-16">
+          <Users className="w-12 h-12 mx-auto mb-3 text-text-tertiary opacity-40" />
+          <p className="text-text-tertiary">No agents found</p>
+        </div>
       )}
 
-      {/* Agent Detail Modal */}
+      {/* Detail Modal */}
       <AnimatePresence>
         {selectedAgent && (
           <motion.div
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setSelectedAgent(null)}
           >
             <motion.div
-              className="glass cyber-border p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-              initial={{ scale: 0.9, opacity: 0 }}
+              className="bg-surface border border-border rounded-2xl p-8 max-w-lg w-full max-h-[85vh] overflow-y-auto"
+              initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
+              exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Agent Header */}
               <div className="flex items-start justify-between mb-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-cyber-blue mb-2">{selectedAgent.name}</h2>
-                  <div className="flex items-center space-x-4 text-sm">
-                    <div className="flex items-center space-x-2">
-                      <div className={`w-3 h-3 rounded-full ${getStatusColor(selectedAgent.status)} pulse-ring`} />
-                      <span>{getStatusText(selectedAgent.status)}</span>
-                    </div>
-                    <span>•</span>
-                    <span>Last active: {selectedAgent.lastActive}</span>
+                  <h2 className="text-2xl font-bold mb-1">{selectedAgent.name}</h2>
+                  <div className="flex items-center gap-2 text-sm text-text-secondary">
+                    <div className={`w-2 h-2 rounded-full ${statusColor(selectedAgent.status)}`} />
+                    <span>{statusLabel(selectedAgent.status)}</span>
                   </div>
                 </div>
-                <button
-                  onClick={() => setSelectedAgent(null)}
-                  className="text-white/50 hover:text-white"
-                >
-                  ✕
+                <button onClick={() => setSelectedAgent(null)} className="p-2 hover:bg-surface-raised rounded-lg transition-colors">
+                  <X className="w-5 h-5 text-text-tertiary" />
                 </button>
               </div>
 
-              {/* Description */}
-              <p className="text-white/80 mb-6 leading-relaxed">{selectedAgent.description}</p>
+              <p className="text-text-secondary leading-relaxed mb-6">{selectedAgent.description}</p>
 
-              {/* Services */}
               <div className="mb-6">
-                <h3 className="text-lg font-bold text-cyber-green mb-3">Services Offered</h3>
+                <h3 className="text-sm font-medium text-text-tertiary mb-3">Services</h3>
                 <div className="flex flex-wrap gap-2">
-                  {selectedAgent.services.map((service) => (
-                    <span
-                      key={service}
-                      className="px-3 py-2 bg-cyber-blue/20 text-cyber-blue rounded-lg font-mono text-sm"
-                    >
-                      {service}
-                    </span>
+                  {selectedAgent.services.map(s => (
+                    <span key={s} className="px-3 py-1.5 bg-surface-raised rounded-lg text-sm">{s}</span>
                   ))}
                 </div>
               </div>
 
-              {/* Stats Grid */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div className="text-center p-3 glass rounded-lg">
-                  <Star className="w-6 h-6 text-yellow-400 mx-auto mb-2" />
-                  <div className="text-lg font-bold">{selectedAgent.avg_rating?.toFixed(1) || 'N/A'}</div>
-                  <div className="text-xs text-white/50">Rating</div>
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="text-center p-3 bg-surface-raised rounded-xl">
+                  <div className="text-lg font-bold">{selectedAgent.avg_rating?.toFixed(1)}</div>
+                  <div className="text-xs text-text-tertiary">Rating</div>
                 </div>
-                <div className="text-center p-3 glass rounded-lg">
-                  <Activity className="w-6 h-6 text-cyber-purple mx-auto mb-2" />
+                <div className="text-center p-3 bg-surface-raised rounded-xl">
                   <div className="text-lg font-bold">{selectedAgent.total_ratings}</div>
-                  <div className="text-xs text-white/50">Reviews</div>
+                  <div className="text-xs text-text-tertiary">Reviews</div>
                 </div>
-                <div className="text-center p-3 glass rounded-lg">
-                  <TrendingUp className="w-6 h-6 text-cyber-green mx-auto mb-2" />
-                  <div className="text-lg font-bold">${((selectedAgent.total_volume || 0) / 1000000).toFixed(1)}M</div>
-                  <div className="text-xs text-white/50">Volume</div>
-                </div>
-                <div className="text-center p-3 glass rounded-lg">
-                  <DollarSign className="w-6 h-6 text-cyber-blue mx-auto mb-2" />
-                  <div className="text-lg font-bold">${selectedAgent.earnings?.toFixed(0) || '0'}</div>
-                  <div className="text-xs text-white/50">Earned</div>
+                <div className="text-center p-3 bg-surface-raised rounded-xl">
+                  <div className="text-lg font-bold font-mono">${((selectedAgent.total_volume || 0) / 1000000).toFixed(1)}M</div>
+                  <div className="text-xs text-text-tertiary">Volume</div>
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex space-x-4">
-                <button className="flex-1 bg-cyber-blue/20 hover:bg-cyber-blue/30 text-cyber-blue px-6 py-3 rounded-lg font-mono transition-colors">
+              <div className="flex gap-3">
+                <button className="flex-1 bg-accent hover:bg-accent-hover text-white px-6 py-3 rounded-xl font-medium transition-colors">
                   View Services
                 </button>
-                <button className="flex-1 bg-cyber-green/20 hover:bg-cyber-green/30 text-cyber-green px-6 py-3 rounded-lg font-mono transition-colors">
-                  Connect Wallet
+                <button className="flex-1 bg-surface-raised hover:bg-border text-text-primary px-6 py-3 rounded-xl font-medium transition-colors">
+                  Connect
                 </button>
               </div>
             </motion.div>
