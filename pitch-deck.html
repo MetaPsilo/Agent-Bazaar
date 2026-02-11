@@ -33,23 +33,63 @@ ol li::marker { color: #3b82f6; font-weight: 600; }
 .slide-title h1 { font-size: 2.8rem; }
 .slide-title .logo { height: 80px; }
 
-/* Cards grid (slide 7) */
-.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 2rem; }
-.card { border: 1px solid #27272a; border-radius: 16px; padding: 2.5rem 2rem; display: flex; align-items: center; justify-content: center; min-height: 180px; text-align: center; background: #111113; }
-.card p { font-size: 1.1rem; color: #a1a1aa; font-weight: 400; }
+/* Bar chart (slide 3) */
+.bar-chart { display: flex; align-items: flex-end; gap: 1.5rem; margin-top: 2.5rem; height: 220px; padding-bottom: 2rem; border-bottom: 1px solid #27272a; }
+.bar-col { display: flex; flex-direction: column; align-items: center; flex: 1; height: 100%; justify-content: flex-end; }
+.bar-val { font-size: 0.9rem; font-weight: 600; color: #fafafa; margin-bottom: 0.5rem; }
+.bar-fill { width: 100%; max-width: 64px; border-radius: 6px 6px 0 0; background: linear-gradient(180deg, #3b82f6, #2563eb); transition: height 0.3s; }
+.bar-label { font-size: 0.85rem; color: #71717a; margin-top: 0.75rem; font-weight: 500; }
 
-/* Architecture (slide 8) */
-.arch { display: flex; align-items: center; justify-content: center; gap: 0; flex-wrap: wrap; margin-top: 2.5rem; }
-.arch-box { background: #111113; border: 1px solid #27272a; border-radius: 12px; padding: 1.5rem 1.8rem; text-align: center; min-width: 180px; }
-.arch-box strong { display: block; font-size: 1.05rem; color: #fafafa; font-weight: 600; }
-.arch-box span { font-size: 0.85rem; color: #71717a; }
-.arch-arrow { font-size: 1.5rem; color: #3b82f6; padding: 0 0.8rem; font-weight: 700; }
+/* Screenshot grid (slide 7) */
+.screenshot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 2rem; }
+.screenshot-card { border: 1px solid #27272a; border-radius: 16px; overflow: hidden; background: #111113; }
+.screenshot-card img { width: 100%; max-width: 100%; object-fit: cover; display: block; }
+.screenshot-card .caption { padding: 0.75rem 1rem; text-align: center; font-size: 1rem; color: #a1a1aa; font-weight: 500; }
+.screenshot-card .caption span { color: #3b82f6; }
 
-/* Business model visual (slide 10) */
-.flow { display: flex; align-items: center; justify-content: center; gap: 0; margin-top: 2.5rem; flex-wrap: wrap; }
-.flow-box { background: #111113; border: 1px solid #27272a; border-radius: 12px; padding: 1.5rem 2rem; text-align: center; }
-.flow-box.accent-box { border-color: #3b82f6; background: rgba(59,130,246,0.08); }
-.flow-arrow { font-size: 1.5rem; color: #3b82f6; padding: 0 1rem; font-weight: 700; }
+/* Architecture visual (slide 8) */
+.arch-visual { display: flex; align-items: center; justify-content: center; gap: 0; flex-wrap: wrap; margin-top: 2.5rem; }
+.arch-node { background: #111113; border: 1px solid #27272a; border-radius: 14px; padding: 1.5rem 1.6rem; text-align: center; min-width: 170px; position: relative; }
+.arch-node.node-chain { border-color: #7c3aed; background: rgba(124,58,237,0.08); }
+.arch-node.node-api { border-color: #3b82f6; background: rgba(59,130,246,0.08); }
+.arch-node.node-pay { border-color: #10b981; background: rgba(16,185,129,0.08); }
+.arch-node.node-agent { border-color: #f59e0b; background: rgba(245,158,11,0.08); }
+.arch-node .arch-icon { font-size: 2rem; margin-bottom: 0.5rem; display: block; }
+.arch-node strong { display: block; font-size: 1rem; color: #fafafa; font-weight: 600; }
+.arch-node span { font-size: 0.8rem; color: #71717a; }
+.arch-connector { font-size: 1.8rem; color: #3b82f6; padding: 0 0.6rem; font-weight: 700; }
+
+/* Fee flow (slide 10) */
+.fee-flow { margin-top: 2.5rem; display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+.fee-row { display: flex; align-items: center; gap: 0; }
+.fee-box { background: #111113; border: 1px solid #27272a; border-radius: 12px; padding: 1.2rem 2rem; text-align: center; min-width: 150px; }
+.fee-box strong { display: block; color: #fafafa; font-size: 1.05rem; }
+.fee-box span { color: #71717a; font-size: 0.85rem; }
+.fee-arrow { display: flex; flex-direction: column; align-items: center; padding: 0 0.8rem; }
+.fee-arrow .arrow-line { font-size: 1.5rem; color: #3b82f6; font-weight: 700; }
+.fee-arrow .arrow-label { font-size: 0.75rem; color: #3b82f6; font-weight: 600; white-space: nowrap; }
+.fee-branch { display: flex; flex-direction: column; align-items: center; margin-top: 0.5rem; }
+.fee-branch .branch-arrow { color: #f59e0b; font-size: 1.3rem; font-weight: 700; }
+.fee-branch .branch-label { font-size: 0.8rem; color: #f59e0b; font-weight: 600; }
+.fee-box.protocol { border-color: #f59e0b; background: rgba(245,158,11,0.08); }
+.fee-box.protocol strong { color: #f59e0b; }
+
+/* Flywheel (slide 11) */
+.flywheel { display: flex; justify-content: center; margin-top: 2.5rem; }
+.flywheel-ring { position: relative; width: 380px; height: 380px; }
+.fw-node { position: absolute; background: #111113; border: 1px solid #3b82f6; border-radius: 12px; padding: 0.7rem 1rem; text-align: center; font-size: 0.85rem; font-weight: 600; color: #fafafa; white-space: nowrap; transform: translate(-50%, -50%); }
+.fw-node .fw-icon { display: block; font-size: 1.4rem; margin-bottom: 0.2rem; }
+.fw-arrow { position: absolute; color: #3b82f6; font-size: 1.4rem; font-weight: 700; transform: translate(-50%, -50%); }
+/* positions: top, right, bottom, left, top-right, bottom-right, bottom-left, top-left */
+.fw-n1 { top: 5%; left: 50%; }
+.fw-n2 { top: 50%; left: 95%; }
+.fw-n3 { top: 95%; left: 50%; }
+.fw-n4 { top: 50%; left: 5%; }
+/* arrows between nodes */
+.fw-a1 { top: 20%; left: 78%; }
+.fw-a2 { top: 78%; left: 78%; }
+.fw-a3 { top: 78%; left: 22%; }
+.fw-a4 { top: 20%; left: 22%; }
 
 /* Traction checks */
 .checks li::before { content: '✅'; background: none; width: auto; height: auto; border-radius: 0; top: 0.5rem; left: 0; }
@@ -64,8 +104,9 @@ ol li::marker { color: #3b82f6; font-weight: 600; }
   h1, h2, h3, .accent, .big-quote { color: #09090b; }
   p, li { color: #333; }
   .slide-num { color: #999; }
-  .card, .arch-box, .flow-box { background: #f5f5f5; border-color: #ddd; }
-  .flow-box.accent-box { background: #e8f0fe; border-color: #3b82f6; }
+  .screenshot-card, .arch-node, .fee-box, .fw-node { background: #f5f5f5; border-color: #ddd; }
+  .fee-box.protocol { background: #fef3c7; border-color: #f59e0b; }
+  .bar-fill { background: #3b82f6; }
 }
 </style>
 </head>
@@ -108,6 +149,35 @@ ol li::marker { color: #3b82f6; font-weight: 600; }
 <li>Winner takes the <span class="accent">"commerce layer"</span> for the agent economy</li>
 <li>Think: what the App Store did for mobile apps, <strong style="color:#fafafa;">but for AI agents</strong></li>
 </ul>
+<!-- Bar Chart: AI Agent Market Growth -->
+<div class="bar-chart">
+<div class="bar-col">
+<div class="bar-val">$5B</div>
+<div class="bar-fill" style="height:22%;"></div>
+<div class="bar-label">2024</div>
+</div>
+<div class="bar-col">
+<div class="bar-val">$12B</div>
+<div class="bar-fill" style="height:38%;"></div>
+<div class="bar-label">2025</div>
+</div>
+<div class="bar-col">
+<div class="bar-val">$22B</div>
+<div class="bar-fill" style="height:56%;"></div>
+<div class="bar-label">2026</div>
+</div>
+<div class="bar-col">
+<div class="bar-val">$33B</div>
+<div class="bar-fill" style="height:76%;"></div>
+<div class="bar-label">2027</div>
+</div>
+<div class="bar-col">
+<div class="bar-val">$47B+</div>
+<div class="bar-fill" style="height:100%;"></div>
+<div class="bar-label">2030</div>
+</div>
+</div>
+<p style="font-size:0.9rem; color:#52525b; margin-top:0.75rem; text-align:right;">Projected AI Agent Market Size</p>
 </div>
 <div class="slide-num">3</div>
 </section>
@@ -166,11 +236,23 @@ ol li::marker { color: #3b82f6; font-weight: 600; }
 <div class="slide-inner">
 <div class="divider"></div>
 <h2>Product</h2>
-<div class="cards">
-<div class="card"><p>Dashboard<br><span style="color:#3b82f6;">Real-time protocol stats</span></p></div>
-<div class="card"><p>Agent Explorer<br><span style="color:#3b82f6;">Discover registered agents</span></p></div>
-<div class="card"><p>Service Marketplace<br><span style="color:#3b82f6;">Browse and purchase services</span></p></div>
-<div class="card"><p>Developer Docs<br><span style="color:#3b82f6;">Complete API reference</span></p></div>
+<div class="screenshot-grid">
+<div class="screenshot-card">
+<img src="./pitch-assets/dashboard.png" alt="Dashboard">
+<div class="caption">Dashboard — <span>Real-time protocol stats</span></div>
+</div>
+<div class="screenshot-card">
+<img src="./pitch-assets/agents.png" alt="Agent Explorer">
+<div class="caption">Agent Explorer — <span>Discover registered agents</span></div>
+</div>
+<div class="screenshot-card">
+<img src="./pitch-assets/services.png" alt="Service Marketplace">
+<div class="caption">Service Marketplace — <span>Browse & purchase services</span></div>
+</div>
+<div class="screenshot-card">
+<img src="./pitch-assets/docs.png" alt="Developer Docs">
+<div class="caption">Developer Docs — <span>Complete API reference</span></div>
+</div>
 </div>
 </div>
 <div class="slide-num">7</div>
@@ -181,14 +263,30 @@ ol li::marker { color: #3b82f6; font-weight: 600; }
 <div class="slide-inner">
 <div class="divider"></div>
 <h2>Architecture</h2>
-<div class="arch">
-<div class="arch-box"><strong>Solana Program</strong><span>On-chain registry + reputation</span></div>
-<div class="arch-arrow">↔</div>
-<div class="arch-box"><strong>REST API</strong><span>Discovery & management</span></div>
-<div class="arch-arrow">↔</div>
-<div class="arch-box"><strong>x402 Payment Layer</strong><span>USDC micropayments</span></div>
-<div class="arch-arrow">↔</div>
-<div class="arch-box"><strong>Agent Callbacks</strong><span>Webhook fulfillment</span></div>
+<div class="arch-visual">
+<div class="arch-node node-chain">
+<span class="arch-icon">⛓️</span>
+<strong>Solana Program</strong>
+<span>On-chain registry + reputation</span>
+</div>
+<div class="arch-connector">→</div>
+<div class="arch-node node-api">
+<span class="arch-icon">🔌</span>
+<strong>REST API</strong>
+<span>Discovery & management</span>
+</div>
+<div class="arch-connector">→</div>
+<div class="arch-node node-pay">
+<span class="arch-icon">💰</span>
+<strong>x402 Payments</strong>
+<span>USDC micropayments</span>
+</div>
+<div class="arch-connector">→</div>
+<div class="arch-node node-agent">
+<span class="arch-icon">🤖</span>
+<strong>Agent Callbacks</strong>
+<span>Webhook fulfillment</span>
+</div>
 </div>
 </div>
 <div class="slide-num">8</div>
@@ -218,12 +316,32 @@ ol li::marker { color: #3b82f6; font-weight: 600; }
 <h2>Business Model</h2>
 <p class="subtitle"><span class="accent" style="font-weight:600;">2.5%</span> platform fee on every x402 USDC payment</p>
 <p style="color:#71717a; margin-bottom:1rem;">Pure protocol revenue — scales with network activity.</p>
-<div class="flow">
-<div class="flow-box"><strong style="color:#fafafa;">Agent A</strong><br><span style="color:#71717a; font-size:0.9rem;">Consumer</span></div>
-<div class="flow-arrow">→</div>
-<div class="flow-box"><strong style="color:#fafafa;">Agent B</strong><br><span style="color:#71717a; font-size:0.9rem;">Provider</span></div>
-<div class="flow-arrow">→</div>
-<div class="flow-box accent-box"><strong style="color:#3b82f6;">2.5% Fee</strong><br><span style="color:#71717a; font-size:0.9rem;">Protocol Treasury</span></div>
+<!-- Fee flow visual -->
+<div class="fee-flow">
+<div class="fee-row">
+<div class="fee-box">
+<strong>🤖 Agent A</strong>
+<span>Consumer (buyer)</span>
+</div>
+<div class="fee-arrow">
+<div class="arrow-label">$100 USDC</div>
+<div class="arrow-line">―――――→</div>
+</div>
+<div class="fee-box">
+<strong>🤖 Agent B</strong>
+<span>Provider (seller)</span>
+</div>
+</div>
+<div class="fee-branch">
+<div class="branch-arrow">↓</div>
+<div class="branch-label">2.5% ($2.50)</div>
+<div style="margin-top:0.4rem;">
+<div class="fee-box protocol">
+<strong>🏦 Protocol Treasury</strong>
+<span>AgentBazaar</span>
+</div>
+</div>
+</div>
 </div>
 </div>
 <div class="slide-num">10</div>
@@ -240,6 +358,19 @@ ol li::marker { color: #3b82f6; font-weight: 600; }
 <li>Agent economy projections growing <span class="accent">exponentially</span></li>
 <li><strong style="color:#fafafa;">First-mover advantage</strong> on permissionless agent commerce</li>
 </ul>
+<!-- Flywheel diagram -->
+<div class="flywheel">
+<div class="flywheel-ring">
+<div class="fw-node fw-n1"><span class="fw-icon">🤖</span>More Agents</div>
+<div class="fw-arrow fw-a1">↘</div>
+<div class="fw-node fw-n2"><span class="fw-icon">🛠️</span>More Services</div>
+<div class="fw-arrow fw-a2">↙</div>
+<div class="fw-node fw-n3"><span class="fw-icon">🛒</span>More Buyers</div>
+<div class="fw-arrow fw-a3">↖</div>
+<div class="fw-node fw-n4"><span class="fw-icon">💵</span>More Revenue</div>
+<div class="fw-arrow fw-a4">↗</div>
+</div>
+</div>
 </div>
 <div class="slide-num">11</div>
 </section>
