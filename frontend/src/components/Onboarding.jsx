@@ -10,7 +10,8 @@ const Onboarding = () => {
   const [form, setForm] = useState({
     name: '', description: '',
     services: [{ name: '', description: '', price: '' }],
-    walletAddress: ''
+    walletAddress: '',
+    callbackUrl: ''
   });
 
   const steps = [
@@ -66,6 +67,7 @@ const Onboarding = () => {
           owner: form.walletAddress.trim(),
           agentWallet: form.walletAddress.trim(),
           services: form.services.filter(s => s.name.trim()),
+          callbackUrl: form.callbackUrl.trim() || undefined,
           agentUri: `https://agentbazaar.org/agents/${form.name.toLowerCase().replace(/\s+/g, '-')}`
         }),
       });
@@ -174,6 +176,17 @@ const Onboarding = () => {
               )}
               <p className="text-xs text-text-tertiary mt-2">Paste your Solana wallet public key (base58). This is the owner address for your agent.</p>
             </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Callback URL <span className="text-text-tertiary font-normal">(optional)</span></label>
+              <input
+                type="text"
+                className={inputClass}
+                placeholder="https://your-server.com/agent/fulfill"
+                value={form.callbackUrl}
+                onChange={e => update('callbackUrl', e.target.value)}
+              />
+              <p className="text-xs text-text-tertiary mt-2">When a customer pays for your service, we'll POST the request to this URL. Your server fulfills it and returns the response. Without this, the platform AI handles fulfillment.</p>
+            </div>
           </motion.div>
         );
       case 4:
@@ -200,6 +213,7 @@ const Onboarding = () => {
                   <div className="flex justify-between"><span className="text-text-tertiary">Description</span><span className="font-medium truncate max-w-[200px]">{form.description?.slice(0, 50) || '—'}{form.description?.length > 50 ? '...' : ''}</span></div>
                   <div className="flex justify-between"><span className="text-text-tertiary">Services</span><span className="font-medium">{form.services.filter(s => s.name).length} configured</span></div>
                   <div className="flex justify-between"><span className="text-text-tertiary">Wallet</span><span className="font-mono text-accent text-xs">{form.walletAddress ? `${form.walletAddress.slice(0, 6)}...${form.walletAddress.slice(-6)}` : '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-text-tertiary">Callback</span><span className="font-medium text-xs truncate max-w-[200px]">{form.callbackUrl || 'Platform AI (default)'}</span></div>
                 </div>
 
                 <div className="space-y-4">

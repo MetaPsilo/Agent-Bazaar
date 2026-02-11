@@ -79,6 +79,7 @@ db.exec(`
     name TEXT NOT NULL,
     description TEXT,
     agent_uri TEXT,
+    callback_url TEXT,
     services_json TEXT DEFAULT '[]',
     active INTEGER DEFAULT 1,
     registered_at INTEGER,
@@ -117,12 +118,9 @@ db.exec(`
   INSERT OR IGNORE INTO protocol_stats (id) VALUES (1);
 `);
 
-// Migration: add services_json column if missing
-try {
-  db.exec(`ALTER TABLE agents ADD COLUMN services_json TEXT DEFAULT '[]'`);
-} catch (e) {
-  // Column already exists
-}
+// Migrations
+try { db.exec(`ALTER TABLE agents ADD COLUMN services_json TEXT DEFAULT '[]'`); } catch {}
+try { db.exec(`ALTER TABLE agents ADD COLUMN callback_url TEXT`); } catch {}
 
 // WebSocket setup with security
 const server = http.createServer(app);
@@ -227,10 +225,51 @@ app.post("/x402/pay", paymentRateLimit, handlePaymentSubmission);
 const OPENCLAW_GATEWAY = process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789";
 const OPENCLAW_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 
-// Helper: call an AI agent via OpenClaw gateway to fulfill a service request
-async function callAgent(agentName, serviceName, prompt, timeoutSeconds = 120) {
+// Helper: call an agent's callback URL to fulfill a service request
+async function callAgentCallback(callbackUrl, agent, service, prompt, timeoutSeconds = 60) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
+    
+    const response = await fetch(callbackUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agentId: agent.agent_id,
+        agentName: agent.name,
+        serviceName: service.name,
+        serviceDescription: service.description,
+        prompt,
+        timestamp: new Date().toISOString(),
+      }),
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeout);
+    
+    if (!response.ok) {
+      console.error(`Agent callback ${callbackUrl} returned ${response.status}`);
+      return { error: "Agent returned an error", fallback: true };
+    }
+    
+    const result = await response.json();
+    return {
+      content: result.content || result.data || result.result || result.message || JSON.stringify(result),
+      agentName: agent.name,
+      serviceName: service.name,
+      fulfilledBy: "agent-callback",
+      generatedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error("Agent callback failed:", error.message);
+    return { error: "Agent unreachable or timed out", fallback: true };
+  }
+}
+
+// Helper: fallback — call OpenClaw gateway for agents without a callback URL
+async function callAgentViaGateway(agentName, serviceName, prompt, timeoutSeconds = 120) {
   if (!OPENCLAW_TOKEN) {
-    return { error: "Agent gateway not configured", fallback: true };
+    return { error: "No callback URL and no gateway configured", fallback: true };
   }
   
   try {
@@ -255,9 +294,7 @@ async function callAgent(agentName, serviceName, prompt, timeoutSeconds = 120) {
     clearTimeout(timeout);
     
     if (!response.ok) {
-      const err = await response.text();
-      console.error("OpenClaw spawn error:", err);
-      return { error: "Agent unavailable", fallback: true };
+      return { error: "Gateway unavailable", fallback: true };
     }
     
     const result = await response.json();
@@ -265,13 +302,27 @@ async function callAgent(agentName, serviceName, prompt, timeoutSeconds = 120) {
       content: result.result || result.message || result.output || "Agent completed task.",
       agentName,
       serviceName,
-      model: "claude-sonnet-4",
+      fulfilledBy: "platform-gateway",
       generatedAt: new Date().toISOString(),
     };
   } catch (error) {
-    console.error("Agent call failed:", error.message);
-    return { error: "Agent timeout or unavailable", fallback: true };
+    console.error("Gateway call failed:", error.message);
+    return { error: "Gateway timeout or unavailable", fallback: true };
   }
+}
+
+// Unified agent caller: tries callback URL first, then gateway fallback
+async function callAgent(agent, service, prompt) {
+  // 1. If agent has a callback URL, call it directly
+  if (agent.callback_url) {
+    const result = await callAgentCallback(agent.callback_url, agent, service, prompt);
+    if (!result.fallback) return result;
+    // Callback failed — don't fall back to gateway (agent owns their fulfillment)
+    return result;
+  }
+  
+  // 2. No callback URL — use platform gateway as fallback
+  return callAgentViaGateway(agent.name, service.name, prompt);
 }
 
 // GET /services/agent/:agentId/:serviceIndex — Generic agent service endpoint
@@ -316,18 +367,19 @@ app.get("/services/agent/:agentId/:serviceIndex", async (req, res) => {
     
     // Payment provided — call the agent
     const result = await callAgent(
-      agent.name,
-      service.name,
+      agent,
+      service,
       prompt || `Provide the ${service.name} service. ${service.description}`,
     );
     
     if (result.fallback) {
-      // Gateway not available — return a structured response
       return res.json({
         service: service.name,
         agent: agent.name,
         status: "agent_offline",
-        message: "Agent gateway is not currently connected. The agent will fulfill this request when available.",
+        message: agent.callback_url 
+          ? "Agent's callback URL is unreachable. The agent may be temporarily offline."
+          : "No callback URL configured and platform gateway unavailable.",
         timestamp: new Date().toISOString(),
       });
     }
@@ -907,13 +959,14 @@ app.post("/agents", registrationRateLimit, [
   validateString('name', 64),
   validateString('description', 512),
   body('agentUri').optional().isURL().withMessage('Invalid agent URI'),
+  body('callbackUrl').optional().isURL().withMessage('Invalid callback URL'),
   body('services').optional().isArray({ max: 20 }).withMessage('Services must be an array (max 20)'),
   validatePubkey('owner'),
   validatePubkey('agentWallet').optional(),
   handleValidationErrors
 ], (req, res) => {
   try {
-    const { name, description = "", agentUri = "", owner, agentWallet, services = [] } = req.body;
+    const { name, description = "", agentUri = "", callbackUrl = "", owner, agentWallet, services = [] } = req.body;
     
     // Sanitize services array
     const sanitizedServices = services.slice(0, 20).map(s => ({
@@ -937,10 +990,10 @@ app.post("/agents", registrationRateLimit, [
       const now = Math.floor(Date.now() / 1000);
 
       const insertAgentStmt = safePreparedStatement(db,
-        "INSERT INTO agents (agent_id, owner, agent_wallet, name, description, agent_uri, services_json, active, registered_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
-        [agentId, owner, agentWallet || owner, name, description, agentUri, servicesJson, now, now]
+        "INSERT INTO agents (agent_id, owner, agent_wallet, name, description, agent_uri, callback_url, services_json, active, registered_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+        [agentId, owner, agentWallet || owner, name, description, agentUri, callbackUrl, servicesJson, now, now]
       );
-      insertAgentStmt.run(agentId, owner, agentWallet || owner, name, description, agentUri, servicesJson, now, now);
+      insertAgentStmt.run(agentId, owner, agentWallet || owner, name, description, agentUri, callbackUrl, servicesJson, now, now);
 
       const insertRepStmt = safePreparedStatement(db, "INSERT INTO reputation (agent_id) VALUES (?)", [agentId]);
       insertRepStmt.run(agentId);
