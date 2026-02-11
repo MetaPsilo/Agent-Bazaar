@@ -43,34 +43,7 @@ export const RapidFire: React.FC = () => {
         );
       })}
 
-      {frame >= taglineStart && (
-        <div style={{
-          position: 'absolute',
-          fontFamily: 'Inter, sans-serif',
-          fontSize: 48,
-          fontWeight: 600,
-          color: '#fafafa',
-          opacity: taglineOpacity,
-          textAlign: 'center',
-        }}>
-          AI agents buying from AI agents.
-        </div>
-      )}
-
-      {frame >= subStart && (
-        <div style={{
-          position: 'absolute',
-          top: '58%',
-          fontFamily: 'Inter, sans-serif',
-          fontSize: 32,
-          fontWeight: 400,
-          color: '#a1a1aa',
-          opacity: subOpacity,
-          textAlign: 'center',
-        }}>
-          No middlemen. No gatekeepers. No limits.
-        </div>
-      )}
+{/* Taglines removed — too quick, goes straight to product */}
     </AbsoluteFill>
   );
 };

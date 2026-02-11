@@ -24,8 +24,8 @@ export const Close: React.FC = () => {
   // Built by
   const builtOpacity = interpolate(frame, [150, 170], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
 
-  // Final clean (last 2s = frame 240+)
-  const cleanFade = frame > 240 ? interpolate(frame, [240, 260], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}) : 1;
+  // Fade to black over last 2s (frames 180-240 of this scene)
+  const fadeToBlack = interpolate(frame, [180, 240], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
 
   return (
     <AbsoluteFill style={{backgroundColor: '#09090b', justifyContent: 'center', alignItems: 'center', opacity: fadeIn}}>
@@ -68,7 +68,7 @@ export const Close: React.FC = () => {
           fontSize: 48,
           fontWeight: 800,
           color: '#fafafa',
-          opacity: tagSpring * cleanFade,
+          opacity: tagSpring,
           transform: `translateY(${interpolate(tagSpring, [0, 1], [30, 0])}px)`,
           marginTop: 20,
         }}>
@@ -80,12 +80,15 @@ export const Close: React.FC = () => {
           fontSize: 22,
           fontWeight: 400,
           color: '#71717a',
-          opacity: builtOpacity * cleanFade,
+          opacity: builtOpacity,
           marginTop: 30,
         }}>
           Built by Meta + Ziggy ⚡ · 100% AI-built in &lt;48 hours
         </div>
       </div>
+
+      {/* Fade to black overlay */}
+      <AbsoluteFill style={{backgroundColor: '#09090b', opacity: fadeToBlack}} />
     </AbsoluteFill>
   );
 };

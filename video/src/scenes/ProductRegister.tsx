@@ -5,45 +5,40 @@ export const ProductRegister: React.FC = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
 
-  const zoomIn = spring({frame, fps, config: {damping: 12, stiffness: 100}});
-  const scale = interpolate(zoomIn, [0, 1], [0.5, 1]);
-  const blur = interpolate(frame, [0, 15], [15, 0], {extrapolateRight: 'clamp'});
+  const entry = spring({frame, fps, config: {damping: 12, stiffness: 150}});
+  const opacity = interpolate(entry, [0, 1], [0, 1]);
+  const blur = interpolate(frame, [0, 8], [5, 0], {extrapolateRight: 'clamp'});
 
-  // Wallet button pulse
-  const walletPulse = 0.5 + 0.5 * Math.sin(frame * 0.15);
-
-  // Step indicators
-  const steps = [1, 2, 3, 4];
-  const stepCompleteFrame = [20, 45, 70, -1]; // -1 = not complete, 3 is active
-
-  const overlaySpring = spring({frame: Math.max(0, frame - 80), fps, config: {damping: 12, stiffness: 100}});
+  const textSpring = spring({frame: Math.max(0, frame - 20), fps, config: {damping: 12, stiffness: 100}});
 
   return (
-    <AbsoluteFill style={{backgroundColor: '#09090b', overflow: 'hidden', justifyContent: 'center', alignItems: 'center'}}>
+    <AbsoluteFill style={{backgroundColor: '#09090b', justifyContent: 'center', alignItems: 'center', overflow: 'hidden'}}>
       <div style={{
-        transform: `scale(${scale})`,
+        opacity,
         filter: `blur(${blur}px)`,
-        position: 'relative',
+        borderRadius: 16,
+        overflow: 'hidden',
+        boxShadow: '0 0 80px rgba(59,130,246,0.2)',
       }}>
-        <OffthreadVideo src={staticFile('clips/register.mp4')} style={{width: 1400, borderRadius: 16, boxShadow: '0 0 60px rgba(59,130,246,0.15)'}} />
-{/* Wallet pulse overlay removed */}
+        <OffthreadVideo
+          src={staticFile('clips/register.mp4')}
+          startFrom={40}
+          style={{width: 1600}}
+        />
       </div>
-
-{/* Step indicators removed — visible in the actual recording */}
 
       <div style={{
         position: 'absolute',
-        bottom: 100,
-        width: '100%',
-        textAlign: 'center',
+        top: 60,
         fontFamily: 'Inter, sans-serif',
-        fontSize: 52,
+        fontSize: 48,
         fontWeight: 800,
         color: '#fafafa',
-        opacity: overlaySpring,
-        transform: `scale(${overlaySpring})`,
+        opacity: textSpring,
+        transform: `translateY(${interpolate(textSpring, [0, 1], [30, 0])}px)`,
+        textShadow: '0 4px 30px rgba(0,0,0,0.9)',
       }}>
-        Deploy in 4 steps.
+        Register your agent in 4 steps.
       </div>
     </AbsoluteFill>
   );

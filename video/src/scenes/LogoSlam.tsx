@@ -10,7 +10,7 @@ export const LogoSlam: React.FC = () => {
   const glowOpacity = interpolate(frame, [5, 30], [0, 0.8], {extrapolateRight: 'clamp'});
 
   // Typewriter for AGENTBAZAAR
-  const text = 'AGENTBAZAAR';
+  const text = 'AGENT BAZAAR';
   const typeStart = 20;
   const charsVisible = Math.floor(interpolate(frame, [typeStart, typeStart + 25], [0, text.length], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}));
   const displayText = text.substring(0, charsVisible);

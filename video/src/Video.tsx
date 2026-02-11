@@ -21,8 +21,8 @@ export const Video: React.FC = () => {
         volume={(f) => {
           // Fade in over first 10 frames
           if (f < 10) return f / 10;
-          // Fade out over last 30 frames
-          if (f > 720) return (750 - f) / 30;
+          // Fade out over last 60 frames (slow fade with video)
+          if (f > 810) return (870 - f) / 60;
           return 1;
         }}
       />
@@ -38,8 +38,8 @@ export const Video: React.FC = () => {
       <Sequence from={315} durationInFrames={135}><ProductRegister /></Sequence>
       {/* 15-21s: Stats slam */}
       <Sequence from={450} durationInFrames={180}><StatsSlam /></Sequence>
-      {/* 21-25s: Close */}
-      <Sequence from={630} durationInFrames={120}><Close /></Sequence>
+      {/* 21-29s: Close (extended for readability + fade to black) */}
+      <Sequence from={630} durationInFrames={240}><Close /></Sequence>
     </AbsoluteFill>
   );
 };
