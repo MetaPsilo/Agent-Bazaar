@@ -220,46 +220,147 @@ function broadcast(event) {
 // x402 Payment endpoints with rate limiting
 app.post("/x402/pay", paymentRateLimit, handlePaymentSubmission);
 
-// Demo service endpoints with x402 protection
-app.get("/services/research/pulse", x402Protect("10000", "HkrtQ8FGS2rkhCC11Z9gHaeMJ93DAfvutmTyq3bLvERd"), (req, res) => {
-  res.json({
-    service: "Market Pulse",
-    data: "Current Solana ecosystem sentiment: BULLISH. Key signals: Jupiter V2 launch trending, SOL price +5.2% 24h.",
-    timestamp: new Date().toISOString(),
-    paymentInfo: req.x402Payment
-  });
-});
+// ============================================================
+// LIVE AGENT SERVICE ENDPOINTS (powered by OpenClaw AI gateway)
+// ============================================================
 
-app.get("/services/research/alpha", x402Protect("50000", "HkrtQ8FGS2rkhCC11Z9gHaeMJ93DAfvutmTyq3bLvERd"), (req, res) => {
-  res.json({
-    service: "Alpha Feed",
-    data: [
-      "🔥 @toly just dropped hints about Firedancer performance improvements",
-      "📊 Whale alert: 1M USDC moved to Jupiter for farming",
-      "🚀 New Solana Mobile announcement expected this week"
-    ],
-    timestamp: new Date().toISOString(),
-    paymentInfo: req.x402Payment
-  });
-});
+const OPENCLAW_GATEWAY = process.env.OPENCLAW_GATEWAY_URL || "http://localhost:18789";
+const OPENCLAW_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || "";
 
-app.get("/services/text-summary", x402Protect("25000", "HkrtQ8FGS2rkhCC11Z9gHaeMJ93DAfvutmTyq3bLvERd"), (req, res) => {
-  const { text } = req.query;
-  if (!text) {
-    return res.status(400).json({ error: "Missing 'text' parameter" });
-  }
-  // SECURITY: Limit input text size to prevent abuse
-  if (text.length > 10000) {
-    return res.status(400).json({ error: "Text too long: max 10000 characters" });
+// Helper: call an AI agent via OpenClaw gateway to fulfill a service request
+async function callAgent(agentName, serviceName, prompt, timeoutSeconds = 120) {
+  if (!OPENCLAW_TOKEN) {
+    return { error: "Agent gateway not configured", fallback: true };
   }
   
-  res.json({
-    service: "Text Summarization",
-    summary: `Summary of provided text (${text.length} chars): ${text.substring(0, 100)}...`,
-    confidence: 0.92,
-    timestamp: new Date().toISOString(),
-    paymentInfo: req.x402Payment
-  });
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
+    
+    const response = await fetch(`${OPENCLAW_GATEWAY}/api/v1/sessions/spawn`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OPENCLAW_TOKEN}`,
+      },
+      body: JSON.stringify({
+        task: `You are ${agentName}, an AI agent on Agent Bazaar. A customer has paid for your "${serviceName}" service via x402 micropayment. Fulfill their request professionally and thoroughly.\n\nCustomer request: ${prompt}\n\nRespond with the service output only — no meta-commentary about being an agent or receiving payment. Be concise but comprehensive.`,
+        model: "anthropic/claude-sonnet-4",
+        runTimeoutSeconds: timeoutSeconds,
+        cleanup: "delete",
+      }),
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeout);
+    
+    if (!response.ok) {
+      const err = await response.text();
+      console.error("OpenClaw spawn error:", err);
+      return { error: "Agent unavailable", fallback: true };
+    }
+    
+    const result = await response.json();
+    return { 
+      content: result.result || result.message || result.output || "Agent completed task.",
+      agentName,
+      serviceName,
+      model: "claude-sonnet-4",
+      generatedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error("Agent call failed:", error.message);
+    return { error: "Agent timeout or unavailable", fallback: true };
+  }
+}
+
+// GET /services/agent/:agentId/:serviceIndex — Generic agent service endpoint
+// Looks up agent + service from DB, calls AI to fulfill
+app.get("/services/agent/:agentId/:serviceIndex", async (req, res) => {
+  try {
+    const { agentId, serviceIndex } = req.params;
+    const { prompt } = req.query;
+    
+    // Look up agent
+    const agentStmt = safePreparedStatement(db, "SELECT * FROM agents WHERE agent_id = ? AND active = 1", [agentId]);
+    const agent = agentStmt.get(Number(agentId));
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
+    
+    // Parse services
+    let services = [];
+    try { services = JSON.parse(agent.services_json || "[]"); } catch {}
+    const service = services[Number(serviceIndex)];
+    if (!service) return res.status(404).json({ error: "Service not found" });
+    
+    // Calculate price in USDC subunits (6 decimals)
+    const priceUsdc = parseFloat(service.price) || 0.01;
+    const priceSubunits = String(Math.round(priceUsdc * 1000000));
+    
+    // Check x402 payment
+    const paymentHeader = req.headers["authorization"] || req.headers["x-payment"];
+    if (!paymentHeader || !paymentHeader.startsWith("x402 ")) {
+      return res.status(402).json({
+        type: "x402",
+        version: "1",
+        description: `Payment required for ${agent.name} — ${service.name}`,
+        price: priceSubunits,
+        currency: "USDC",
+        network: "solana",
+        recipient: agent.agent_wallet,
+        agentId: agent.agent_id,
+        agentName: agent.name,
+        serviceName: service.name,
+        serviceDescription: service.description,
+      });
+    }
+    
+    // Payment provided — call the agent
+    const result = await callAgent(
+      agent.name,
+      service.name,
+      prompt || `Provide the ${service.name} service. ${service.description}`,
+    );
+    
+    if (result.fallback) {
+      // Gateway not available — return a structured response
+      return res.json({
+        service: service.name,
+        agent: agent.name,
+        status: "agent_offline",
+        message: "Agent gateway is not currently connected. The agent will fulfill this request when available.",
+        timestamp: new Date().toISOString(),
+      });
+    }
+    
+    res.json({
+      service: service.name,
+      agent: agent.name,
+      ...result,
+      paymentInfo: { price: priceUsdc, currency: "USDC" },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Agent service error:", error);
+    res.status(500).json({ error: "Service error" });
+  }
+});
+
+// Legacy hardcoded endpoints (redirect to agent service system)
+app.get("/services/research/pulse", (req, res) => {
+  req.params = { agentId: "0", serviceIndex: "0" };
+  req.query.prompt = req.query.prompt || "Generate a daily alpha briefing on the Solana ecosystem";
+  res.redirect(307, `/services/agent/0/0?prompt=${encodeURIComponent(req.query.prompt)}`);
+});
+
+app.get("/services/research/alpha", (req, res) => {
+  res.redirect(307, `/services/agent/0/1?prompt=${encodeURIComponent(req.query.prompt || "Generate a deep research report on the current state of Solana")}`);
+});
+
+app.get("/services/text-summary", (req, res) => {
+  const { text } = req.query;
+  if (!text) return res.status(400).json({ error: "Missing 'text' parameter" });
+  if (text.length > 10000) return res.status(400).json({ error: "Text too long: max 10000 characters" });
+  res.redirect(307, `/services/agent/0/2?prompt=${encodeURIComponent(`Provide a real-time ecosystem pulse. Context: ${text.substring(0, 5000)}`)}`);
 });
 
 // ============================================================
