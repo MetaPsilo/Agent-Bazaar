@@ -950,7 +950,10 @@ if (process.env.NODE_ENV === 'production') {
         !req.path.startsWith('/leaderboard') && !req.path.startsWith('/search') &&
         !req.path.startsWith('/services') && !req.path.startsWith('/health') &&
         !req.path.startsWith('/ws') && !req.path.startsWith('/jobs') &&
-        !req.path.startsWith('/x402') && !req.path.startsWith('/feedback')) {
+        !req.path.startsWith('/x402') && !req.path.startsWith('/feedback') &&
+        !req.path.startsWith('/assets') && !req.path.endsWith('.js') &&
+        !req.path.endsWith('.css') && !req.path.endsWith('.png') &&
+        !req.path.endsWith('.svg') && !req.path.endsWith('.ico')) {
       res.sendFile(path.join(frontendPath, 'index.html'));
     }
   });
