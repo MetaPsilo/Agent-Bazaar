@@ -2,12 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingCart, CheckCircle, Search, Star, Clock, X } from 'lucide-react';
 
-const ServiceMarketplace = () => {
+const ServiceMarketplace = ({ initialSearch, onSearchHandled }) => {
   const [services, setServices] = useState([]);
   const [filtered, setFiltered] = useState([]);
   const [selected, setSelected] = useState(null);
   const [paymentStep, setPaymentStep] = useState('select');
   const [filters, setFilters] = useState({ search: '', priceRange: 'all', category: 'all' });
+
+  useEffect(() => {
+    if (initialSearch) {
+      setFilters(p => ({ ...p, search: initialSearch }));
+      if (onSearchHandled) onSearchHandled();
+    }
+  }, [initialSearch]);
 
   const mockServices = [
     { id: 'pulse', name: 'Market Pulse', agent: 'Ziggy Alpha', description: 'Real-time Solana ecosystem sentiment analysis with key signals.', price: 0.01, category: 'research', rating: 4.8, usage: 1247, responseTime: '~2s', features: ['Sentiment analysis', 'Market signals', 'Price tracking', 'Social insights'] },

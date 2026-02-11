@@ -10,6 +10,7 @@ import Docs from './components/Docs';
 function App() {
   const [activeView, setActiveView] = useState('dashboard');
   const [docsSection, setDocsSection] = useState(null);
+  const [marketplaceSearch, setMarketplaceSearch] = useState('');
   const [connected, setConnected] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [stats, setStats] = useState({
@@ -55,7 +56,7 @@ function App() {
       case 'dashboard': return <Dashboard stats={stats} connected={connected} />;
       case 'explorer': return <AgentExplorer onNavigate={navigate} />;
       case 'onboarding': return <Onboarding />;
-      case 'marketplace': return <ServiceMarketplace />;
+      case 'marketplace': return <ServiceMarketplace initialSearch={marketplaceSearch} onSearchHandled={() => setMarketplaceSearch('')} />;
       case 'docs': return <Docs scrollToSection={docsSection} onSectionHandled={() => setDocsSection(null)} />;
       default: return <Dashboard stats={stats} connected={connected} />;
     }
@@ -64,6 +65,9 @@ function App() {
   const navigate = (id, options) => {
     if (options?.section) {
       setDocsSection(options.section);
+    }
+    if (options?.search) {
+      setMarketplaceSearch(options.search);
     }
     setActiveView(id);
     setMobileMenuOpen(false);

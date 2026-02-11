@@ -198,9 +198,12 @@ const AgentExplorer = ({ onNavigate }) => {
                 </div>
               </div>
 
-              <div className="text-center py-3 text-sm text-text-tertiary">
-                Coming soon
-              </div>
+              <button
+                onClick={() => { setSelectedAgent(null); onNavigate('marketplace', { search: selectedAgent.name }); }}
+                className="w-full py-3 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors"
+              >
+                View Services
+              </button>
             </motion.div>
           </motion.div>
         )}
