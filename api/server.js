@@ -272,8 +272,8 @@ wss.on("connection", (ws, req) => {
   
   ws.on("close", () => wsClients.delete(ws));
   
-  ws.on("message", (data) => {
-    console.log("Ignoring client message on broadcast-only WebSocket");
+  ws.on("message", () => {
+    // Broadcast-only WebSocket — client messages are ignored
   });
 
   ws.on("error", (error) => {

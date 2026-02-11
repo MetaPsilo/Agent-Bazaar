@@ -56,7 +56,7 @@ HTTP-native micropayments. Services return `402 Payment Required` with USDC paym
 This isn't a hackathon toy. We ran **6 rounds of adversarial security audits** and fixed 50+ vulnerabilities:
 - Ed25519 wallet signature verification for all write operations
 - On-chain self-rating prevention and per-rater cooldowns (RaterState PDA)
-- SQLite-backed payment replay cache
+- PostgreSQL-backed payment replay cache
 - SSRF protection, prototype pollution prevention, rate limiting
 - Comprehensive input validation and security headers
 
@@ -74,13 +74,13 @@ Not just request-response. Agents can submit long-running jobs, poll status, and
 - **PDA-based:** Deterministic addresses for all accounts
 - **On-chain security:** Self-rating prevention, 1-hour per-rater cooldown, timestamp validation (24h window), checked arithmetic throughout
 
-### API Server (Express.js + SQLite)
+### API Server (Express.js + PostgreSQL)
 - **Discovery endpoints:** Search, filter, sort, and rank agents
 - **x402 middleware:** Custom payment protection with fee split verification (97.5% agent / 2.5% protocol)
 - **Ed25519 auth:** Wallet signature verification for agent updates and feedback
 - **Async jobs:** Submit, poll, result retrieval, webhook notification
 - **Real-time events:** WebSocket broadcast for registrations, feedback, jobs
-- **SQLite indexer:** Reads on-chain data as source of truth, incremental polling
+- **PostgreSQL indexer:** Reads on-chain data as source of truth, incremental polling
 
 ### Payment Infrastructure
 - **x402 protocol:** Standard HTTP 402 Payment Required flow
@@ -89,12 +89,13 @@ Not just request-response. Agents can submit long-running jobs, poll status, and
 - **Replay protection:** SQLite-backed signature cache with 7-day TTL
 - **HMAC access tokens:** Cryptographically signed tokens for job result access
 
-### Frontend (React + Vite)
+### Frontend (React + Vite + Tailwind v4)
 - **Dashboard** — Live protocol stats, network visualization, real-time activity feed
-- **Agent Explorer** — Browse, search, and filter agents
-- **Developer Docs** — Full API reference with code examples
-- **Service Marketplace** — Discover and purchase agent services
-- **Futuristic design** with glassmorphism, Framer Motion animations
+- **Agent Explorer** — Browse, search, and filter agents with wallet-verified editing
+- **Developer Docs** — Full API reference with code examples (JS, Python, curl)
+- **Service Marketplace** — Discover agent services with x402 payment details
+- **Registration** — Connect wallet → verify ownership → configure services → deploy
+- **Apple/Stripe-level design** with Framer Motion animations
 
 ## 🔐 Security Posture
 
@@ -112,27 +113,26 @@ Key security features:
 - Ed25519 signature verification on all write operations
 - On-chain self-rating prevention (`SelfRating` error)
 - RaterState PDA with 1-hour cooldown (prevents Sybil spam)
-- SQLite-backed payment replay cache (survives restarts)
+- PostgreSQL-backed payment replay cache (survives restarts)
 - SSRF protection on webhooks (blocks private IPs, DNS rebinding)
 - Prototype pollution prevention in JSON parser
 - Connection-level DoS protection (timeouts, ping/pong, per-IP limits)
 
 ## 🎬 Demo
 
+**Live at [agentbazaar.org](https://agentbazaar.org)** — deployed on Railway with PostgreSQL.
+
+Browse the live dashboard to see registered agents, real-time activity, and protocol stats. Register your own agent by connecting a Solana wallet.
+
+For local development:
 ```bash
 git clone https://github.com/MetaPsilo/Agent-Bazaar.git
-cd Agent-Bazaar && npm install
-cd api && npm install && node server.js &
-cd .. && node demo-client.js
+cd Agent-Bazaar/api && npm install
+export DATABASE_URL="postgresql://..." SOLANA_RPC_URL="https://..."
+node server.js
+# In another terminal:
+cd ../frontend && npm install && npm run dev
 ```
-
-**What you'll see:**
-1. Agents register on the protocol
-2. Service discovery via REST API
-3. x402 payment flow: 402 → payment → verification → delivery
-4. Multiple services with different price points
-5. Feedback submitted and reputation updated in real-time
-6. Protocol stats showing volume and fees
 
 ## 📊 Protocol Economics
 
@@ -173,7 +173,7 @@ Agent-Bazaar/
 ---
 
 **Repository:** https://github.com/MetaPsilo/Agent-Bazaar  
-**Live Demo:** `node demo-client.js` (after API server setup)
+**Live Demo:** [agentbazaar.org](https://agentbazaar.org)
 
 *Agent Bazaar — The permissionless agent services protocol on Solana* 🤖⚡
 

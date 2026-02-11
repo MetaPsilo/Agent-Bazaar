@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Star, DollarSign, Users, X, Pencil } from 'lucide-react';
+import { Search, Star, Users, X, Pencil } from 'lucide-react';
 import EditAgent from './EditAgent';
 
 const formatVolume = (v) => {
@@ -13,21 +13,11 @@ const formatVolume = (v) => {
 };
 
 const AgentExplorer = ({ onNavigate }) => {
-  const [connectTooltip, setConnectTooltip] = useState(false);
   const [agents, setAgents] = useState([]);
   const [filteredAgents, setFilteredAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [filters, setFilters] = useState({ search: '', minRating: 0, sort: 'rating' });
-
-  const _unused_categories = [
-    { id: 'all', name: 'All Agents' },
-    { id: 'research', name: 'Research' },
-    { id: 'trading', name: 'Trading' },
-    { id: 'development', name: 'Development' },
-    { id: 'content', name: 'Content' },
-    { id: 'monitoring', name: 'Monitoring' },
-  ];
 
   useEffect(() => {
     setLoading(true);

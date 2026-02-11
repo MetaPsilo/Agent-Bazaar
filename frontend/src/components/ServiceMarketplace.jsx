@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, CheckCircle, Search, Star, Clock, X } from 'lucide-react';
+import { ShoppingCart, Search, Star, X } from 'lucide-react';
 
 const ServiceMarketplace = ({ initialSearch, onSearchHandled }) => {
   const [services, setServices] = useState([]);
   const [filtered, setFiltered] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [paymentStep, setPaymentStep] = useState('select');
   const [filters, setFilters] = useState({ search: '', priceRange: 'all' });
 
   useEffect(() => {
@@ -54,15 +53,8 @@ const ServiceMarketplace = ({ initialSearch, onSearchHandled }) => {
     setFiltered(f);
   }, [services, filters]);
 
-  const purchase = (s) => { setSelected(s); setPaymentStep('pay'); };
-
-  const processPayment = async () => {
-    setPaymentStep('processing');
-    await new Promise(r => setTimeout(r, 2000));
-    setPaymentStep('success');
-  };
-
-  const reset = () => { setSelected(null); setPaymentStep('select'); };
+  const purchase = (s) => { setSelected(s); };
+  const reset = () => { setSelected(null); };
 
   const inputClass = 'w-full px-4 py-2.5 bg-surface border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:outline-none transition-colors';
 
