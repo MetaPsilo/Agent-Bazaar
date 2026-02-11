@@ -46,7 +46,7 @@ const ServiceMarketplace = () => {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3">Service Marketplace</h1>
-        <p className="text-text-secondary text-lg">Purchase AI services with USDC via x402 protocol.</p>
+        <p className="text-text-secondary text-lg">AI agent services available for purchase via x402 protocol.</p>
       </div>
 
       {/* Filters */}
@@ -113,9 +113,9 @@ const ServiceMarketplace = () => {
 
               <button
                 onClick={() => purchase(s)}
-                className="w-full bg-accent hover:bg-accent-hover text-white py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                className="w-full bg-surface-raised hover:bg-border text-text-secondary py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2 border border-border"
               >
-                <ShoppingCart className="w-4 h-4" /> Purchase
+                <ShoppingCart className="w-4 h-4" /> View Details
               </button>
             </motion.div>
           ))}
@@ -142,42 +142,23 @@ const ServiceMarketplace = () => {
               initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               onClick={e => e.stopPropagation()}
             >
-              {paymentStep === 'pay' && (
-                <div>
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-xl font-semibold">Confirm Purchase</h3>
-                    <button onClick={reset} className="p-2 hover:bg-surface-raised rounded-lg"><X className="w-5 h-5 text-text-tertiary" /></button>
-                  </div>
-                  <div className="bg-surface-raised rounded-xl p-4 space-y-3 text-sm mb-6">
-                    <div className="flex justify-between"><span className="text-text-tertiary">Service</span><span className="font-medium">{selected.name}</span></div>
-                    <div className="flex justify-between"><span className="text-text-tertiary">Provider</span><span className="text-accent">{selected.agent}</span></div>
-                    <div className="border-t border-border pt-3 flex justify-between text-base"><span className="font-medium">Total</span><span className="font-bold">${selected.price} USDC</span></div>
-                  </div>
-                  <div className="flex gap-3">
-                    <button onClick={reset} className="flex-1 bg-surface-raised hover:bg-border py-3 rounded-xl font-medium transition-colors">Cancel</button>
-                    <button onClick={processPayment} className="flex-1 bg-accent hover:bg-accent-hover text-white py-3 rounded-xl font-medium transition-colors">Pay with USDC</button>
-                  </div>
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-semibold">{selected.name}</h3>
+                  <button onClick={reset} className="p-2 hover:bg-surface-raised rounded-lg"><X className="w-5 h-5 text-text-tertiary" /></button>
                 </div>
-              )}
-
-              {paymentStep === 'processing' && (
-                <div className="text-center py-4">
-                  <div className="w-12 h-12 border-3 border-border border-t-accent rounded-full mx-auto mb-4 animate-spin" />
-                  <h3 className="text-lg font-semibold mb-2">Processing Payment</h3>
-                  <p className="text-sm text-text-secondary">Verifying transaction on Solana...</p>
+                <div className="bg-surface-raised rounded-xl p-4 space-y-3 text-sm mb-6">
+                  <div className="flex justify-between"><span className="text-text-tertiary">Provider</span><span className="text-accent">{selected.agent}</span></div>
+                  <div className="flex justify-between"><span className="text-text-tertiary">Price per call</span><span className="font-medium">${selected.price} USDC</span></div>
+                  <div className="flex justify-between"><span className="text-text-tertiary">Protocol</span><span className="font-medium">x402</span></div>
                 </div>
-              )}
-
-              {paymentStep === 'success' && (
-                <div className="text-center py-4">
-                  <div className="w-12 h-12 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <CheckCircle className="w-7 h-7 text-success" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">Payment Complete</h3>
-                  <p className="text-sm text-text-secondary mb-6">Service response is ready.</p>
-                  <button onClick={reset} className="bg-surface-raised hover:bg-border px-8 py-3 rounded-xl font-medium transition-colors">Done</button>
+                <div className="bg-accent/10 border border-accent/20 rounded-xl p-4 mb-6">
+                  <p className="text-sm text-text-secondary leading-relaxed">
+                    <span className="text-accent font-medium">Agent-to-agent only.</span> Services on AgentBazaar are purchased programmatically by AI agents via the x402 HTTP payment protocol — not through this UI. See the <span className="text-accent">Docs</span> tab for integration details.
+                  </p>
                 </div>
-              )}
+                <button onClick={reset} className="w-full bg-surface-raised hover:bg-border py-3 rounded-xl font-medium transition-colors">Close</button>
+              </div>
             </motion.div>
           </motion.div>
         )}
