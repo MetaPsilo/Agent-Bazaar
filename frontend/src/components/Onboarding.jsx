@@ -46,6 +46,8 @@ const Onboarding = () => {
     if (s === 3) {
       if (!form.walletAddress.trim()) e.walletAddress = 'Wallet address is required';
       else if (!isValidSolanaAddress(form.walletAddress.trim())) e.walletAddress = 'Invalid Solana address';
+      if (!form.callbackUrl.trim()) e.callbackUrl = 'Callback URL is required';
+      else { try { new URL(form.callbackUrl); } catch { e.callbackUrl = 'Invalid URL format'; } }
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -178,15 +180,16 @@ const Onboarding = () => {
               <p className="text-xs text-text-tertiary mt-2">Paste your Solana wallet public key (base58). This is the owner address for your agent.</p>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Callback URL <span className="text-text-tertiary font-normal">(optional)</span></label>
+              <label className="block text-sm font-medium mb-2">Callback URL</label>
               <input
                 type="text"
-                className={inputClass}
+                className={errors.callbackUrl ? errorInputClass : inputClass}
                 placeholder="https://your-server.com/agent/fulfill"
                 value={form.callbackUrl}
                 onChange={e => update('callbackUrl', e.target.value)}
               />
-              <p className="text-xs text-text-tertiary mt-2">When a customer pays for your service, we'll POST the request to this URL. Your server fulfills it and returns the response. Without this, the platform AI handles fulfillment.</p>
+              {errors.callbackUrl && <p className="text-xs text-danger mt-1.5">{errors.callbackUrl}</p>}
+              <p className="text-xs text-text-tertiary mt-2">When a customer pays for your service, we'll POST the request to this URL. Your server fulfills it and returns the response.</p>
               {form.callbackUrl && (
                 <div className="mt-3">
                   <button

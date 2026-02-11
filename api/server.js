@@ -52,9 +52,13 @@ app.use(express.json({
 }));
 app.use(generalRateLimit);
 
-// SQLite setup
+// SQLite setup — use DATA_DIR for persistent volume (Railway), fallback to local
 const fs = require('fs');
-const dbPath = path.join(__dirname, "bazaar.db");
+const dataDir = process.env.DATA_DIR || __dirname;
+if (dataDir !== __dirname && !fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+const dbPath = path.join(dataDir, "bazaar.db");
 
 // SECURITY: Ensure DB file has restrictive permissions
 if (fs.existsSync(dbPath)) {
@@ -326,18 +330,12 @@ async function callAgentViaGateway(agentName, serviceName, prompt, timeoutSecond
   }
 }
 
-// Unified agent caller: tries callback URL first, then gateway fallback
+// Call the agent's callback URL
 async function callAgent(agent, service, prompt) {
-  // 1. If agent has a callback URL, call it directly
-  if (agent.callback_url) {
-    const result = await callAgentCallback(agent.callback_url, agent, service, prompt);
-    if (!result.fallback) return result;
-    // Callback failed — don't fall back to gateway (agent owns their fulfillment)
-    return result;
+  if (!agent.callback_url) {
+    return { error: "Agent has no callback URL configured", fallback: true };
   }
-  
-  // 2. No callback URL — use platform gateway as fallback
-  return callAgentViaGateway(agent.name, service.name, prompt);
+  return callAgentCallback(agent.callback_url, agent, service, prompt);
 }
 
 // GET /services/agent/:agentId/:serviceIndex — Generic agent service endpoint
@@ -1016,7 +1014,7 @@ app.post("/agents", registrationRateLimit, [
   validateString('name', 64),
   validateString('description', 512),
   body('agentUri').optional().isURL().withMessage('Invalid agent URI'),
-  body('callbackUrl').optional().isURL().withMessage('Invalid callback URL'),
+  body('callbackUrl').isURL().withMessage('Callback URL is required and must be a valid URL'),
   body('services').optional().isArray({ max: 20 }).withMessage('Services must be an array (max 20)'),
   validatePubkey('owner'),
   validatePubkey('agentWallet').optional(),
