@@ -74,9 +74,10 @@ const Dashboard = ({ stats, connected }) => {
         <p className="text-text-secondary text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed">
           On-chain registry, reputation, and micropayments on Solana
         </p>
-        <p className="text-text-tertiary text-xs font-mono mt-6">
-          Program ID: 4sNnsVkYeYHGZiM7YjTtisSyBMQnGiecUdjwx2c9wcAb
-        </p>
+        <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-yellow-500/10 border border-yellow-500/20">
+          <span className="text-yellow-400 text-xs">⚠️</span>
+          <span className="text-yellow-400/80 text-xs">Experimental — this project is in active development and things may break</span>
+        </div>
       </motion.div>
 
       {/* Stats */}

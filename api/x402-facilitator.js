@@ -17,6 +17,8 @@ if (!process.env.TOKEN_SECRET) {
 // Constants
 const PLATFORM_FEE_BPS = parseInt(process.env.PLATFORM_FEE_BPS || "250");
 const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
+// Protocol treasury wallet — receives the 2.5% platform fee
+const TREASURY_WALLET = process.env.TREASURY_WALLET || "HkrtQ8FGS2rkhCC11Z9gHaeMJ93DAfvutmTyq3bLvERd";
 // Use mainnet USDC by default, devnet USDC if SOLANA_RPC_URL contains "devnet"
 const USDC_MINT = new PublicKey(
   (process.env.SOLANA_RPC_URL || '').includes('devnet')
@@ -38,11 +40,12 @@ function calculateFeeSplit(totalAmount) {
 }
 
 /**
- * Verify a Solana transaction signature and extract payment details
+ * Verify a Solana transaction signature and extract payment details.
+ * Enforces fee split: checks that both agent AND treasury received correct amounts.
  * @param {string} signature - Transaction signature
- * @param {string} expectedRecipient - Expected recipient public key
- * @param {number} expectedAmount - Expected amount in USDC lamports
- * @returns {Promise<{verified: boolean, amount: number, sender: string}>}
+ * @param {string} expectedRecipient - Expected agent wallet public key
+ * @param {number} expectedAmount - Expected TOTAL amount in USDC lamports (before split)
+ * @returns {Promise<{verified: boolean, amount: number, sender: string, agentShare: number, platformFee: number}>}
  */
 async function verifyPayment(signature, expectedRecipient, expectedAmount) {
   try {
@@ -53,10 +56,13 @@ async function verifyPayment(signature, expectedRecipient, expectedAmount) {
         return { verified: false, error: "Demo signature already used" };
       }
       console.warn(`⚠️ DEMO MODE: Accepting fake signature ${signature} - THIS IS UNSAFE FOR PRODUCTION!`);
+      const { agentShare, platformFee } = calculateFeeSplit(expectedAmount);
       recordSignature(signature, { amount: expectedAmount, recipient: expectedRecipient });
       return {
         verified: true,
         amount: expectedAmount,
+        agentShare,
+        platformFee,
         sender: "demo_sender_wallet"
       };
     }
@@ -103,8 +109,12 @@ async function verifyPayment(signature, expectedRecipient, expectedAmount) {
       }
     }
 
-    // Find the recipient's balance increase
-    let recipientIncrease = 0;
+    // Calculate expected split
+    const { agentShare: expectedAgentShare, platformFee: expectedPlatformFee } = calculateFeeSplit(expectedAmount);
+    
+    // Find balance changes for agent, treasury, and sender
+    let agentIncrease = 0;
+    let treasuryIncrease = 0;
     let senderAddress = null;
     
     for (const [accIdx, postBal] of postBalanceMap) {
@@ -112,7 +122,10 @@ async function verifyPayment(signature, expectedRecipient, expectedAmount) {
       const delta = postBal.amount - preBal;
       
       if (postBal.owner === expectedRecipient && delta > 0) {
-        recipientIncrease += delta;
+        agentIncrease += delta;
+      }
+      if (postBal.owner === TREASURY_WALLET && delta > 0) {
+        treasuryIncrease += delta;
       }
       if (delta < 0) {
         // This account lost tokens — likely the sender
@@ -120,16 +133,35 @@ async function verifyPayment(signature, expectedRecipient, expectedAmount) {
       }
     }
 
-    if (recipientIncrease < expectedAmount) {
-      return { verified: false, error: `Insufficient transfer: got ${recipientIncrease}, need ${expectedAmount}` };
+    // If treasury is the same as agent (self-hosted), accept full payment to one wallet
+    const isSameWallet = expectedRecipient === TREASURY_WALLET;
+    
+    if (isSameWallet) {
+      // Single wallet mode: just check total amount
+      if (agentIncrease < expectedAmount) {
+        return { verified: false, error: `Insufficient transfer: got ${agentIncrease}, need ${expectedAmount}` };
+      }
+    } else {
+      // Split payment mode: verify BOTH legs
+      // Allow 1 lamport tolerance for rounding
+      if (agentIncrease < expectedAgentShare - 1) {
+        return { verified: false, error: `Insufficient agent payment: got ${agentIncrease}, need ${expectedAgentShare}` };
+      }
+      if (treasuryIncrease < expectedPlatformFee - 1) {
+        return { verified: false, error: `Missing or insufficient platform fee: got ${treasuryIncrease}, need ${expectedPlatformFee}. Treasury: ${TREASURY_WALLET}` };
+      }
     }
 
+    const totalVerified = agentIncrease + treasuryIncrease;
+
     // SECURITY: Record signature to prevent replay
-    recordSignature(signature, { amount: recipientIncrease, recipient: expectedRecipient });
+    recordSignature(signature, { amount: totalVerified, recipient: expectedRecipient, treasury: TREASURY_WALLET });
 
     return {
       verified: true,
-      amount: recipientIncrease,
+      amount: totalVerified,
+      agentShare: agentIncrease,
+      platformFee: treasuryIncrease,
       sender: senderAddress || tx.transaction.message.accountKeys[0].toString()
     };
 
@@ -152,6 +184,7 @@ function x402Protect(price, agentWallet) {
       // SECURITY: Use configured base URL instead of trusting Host header
       // Host header injection could redirect payments to attacker's facilitator
       const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+      const { agentShare, platformFee } = calculateFeeSplit(parseInt(price));
       return res.status(402).json({
         error: "Payment Required",
         x402: {
@@ -160,6 +193,12 @@ function x402Protect(price, agentWallet) {
           currency: "USDC",
           network: "solana",
           recipient: agentWallet,
+          treasury: TREASURY_WALLET,
+          feeBps: PLATFORM_FEE_BPS,
+          split: {
+            agent: { wallet: agentWallet, amount: agentShare.toString() },
+            platform: { wallet: TREASURY_WALLET, amount: platformFee.toString() },
+          },
           facilitator: `${baseUrl}/x402/pay`,
           memo: `Payment for ${req.path}`,
         }
