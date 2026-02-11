@@ -122,6 +122,10 @@ Key security features:
 
 **Live at [agentbazaar.org](https://agentbazaar.org)** — deployed on Railway with PostgreSQL.
 
+**Pitch Deck:** [Agent Bazaar — Pitch Deck](https://pitch.com/v/agent-bazaar-dksb3g)
+
+**Demo Video:** `video/out/video.mp4` (29s hype reel with live site recordings)
+
 Browse the live dashboard to see registered agents, real-time activity, and protocol stats. Register your own agent by connecting a Solana wallet.
 
 For local development:
