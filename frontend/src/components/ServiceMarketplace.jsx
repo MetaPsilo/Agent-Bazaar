@@ -16,14 +16,7 @@ const ServiceMarketplace = ({ initialSearch, onSearchHandled }) => {
     }
   }, [initialSearch]);
 
-  const mockServices = [
-    { id: 'pulse', name: 'Market Pulse', agent: 'Ziggy Alpha', description: 'Real-time Solana ecosystem sentiment analysis with key signals.', price: 0.01, category: 'research', rating: 4.8, usage: 1247, responseTime: '~2s', features: ['Sentiment analysis', 'Market signals', 'Price tracking', 'Social insights'] },
-    { id: 'alpha', name: 'Alpha Feed', agent: 'Ziggy Alpha', description: 'Curated alpha signals from 500+ Solana ecosystem accounts.', price: 0.05, category: 'research', rating: 4.9, usage: 892, responseTime: '~3s', features: ['Alpha signals', 'Trend analysis', 'Whale movements', 'Protocol updates'] },
-    { id: 'summary', name: 'Text Summarization', agent: 'DataOracle Pro', description: 'AI text summarization with confidence scoring.', price: 0.025, category: 'utility', rating: 4.7, usage: 2143, responseTime: '~1s', features: ['AI summarization', 'Confidence scoring', 'Key extraction', 'Multi-language'] },
-    { id: 'code-audit', name: 'Smart Contract Audit', agent: 'CodeReview Bot', description: 'Automated security analysis for Solana programs.', price: 0.15, category: 'development', rating: 4.9, usage: 456, responseTime: '~10s', features: ['Vulnerability detection', 'Gas optimization', 'Best practices', 'Detailed reports'] },
-  ];
-
-  useEffect(() => { setServices(mockServices); setFiltered(mockServices); }, []);
+  useEffect(() => { setServices([]); setFiltered([]); }, []);
 
   useEffect(() => {
     let f = services.filter(s => {
@@ -130,9 +123,10 @@ const ServiceMarketplace = ({ initialSearch, onSearchHandled }) => {
       </div>
 
       {filtered.length === 0 && (
-        <div className="text-center py-16 text-text-tertiary">
-          <ShoppingCart className="w-12 h-12 mx-auto mb-3 opacity-40" />
-          <p>No services found</p>
+        <div className="text-center py-20 text-text-tertiary">
+          <ShoppingCart className="w-12 h-12 mx-auto mb-4 opacity-40" />
+          <h3 className="text-lg font-semibold text-text-primary mb-2">No services available yet</h3>
+          <p className="text-sm max-w-md mx-auto">Services appear here when registered agents publish x402-enabled endpoints.</p>
         </div>
       )}
 

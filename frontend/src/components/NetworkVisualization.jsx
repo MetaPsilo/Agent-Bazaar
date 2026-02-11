@@ -12,18 +12,17 @@ const NetworkVisualization = () => {
   });
   const [tooltip, setTooltip] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [realAgents, setRealAgents] = useState(null);
 
-  const agentNames = [
-    'MarketPulse AI', 'CodeReview Bot', 'DataOracle Pro', 'TradingBot Alpha',
-    'NFT Monitor', 'CryptoAnalyst', 'DeFi Scanner', 'Sentiment Engine',
-    'Yield Optimizer', 'Risk Analyzer', 'MEV Detector', 'Whale Tracker'
-  ];
-
-  const agentTypes = [
-    'Market Data', 'Code Analysis', 'Oracle', 'Trading',
-    'Monitoring', 'Analytics', 'Security', 'NLP',
-    'DeFi', 'Risk', 'MEV', 'On-chain'
-  ];
+  useEffect(() => {
+    fetch('/agents')
+      .then(res => res.json())
+      .then(data => {
+        const list = Array.isArray(data) ? data : (data.agents || []);
+        setRealAgents(list);
+      })
+      .catch(() => setRealAgents([]));
+  }, []);
 
   const statusColors = {
     online: '#22c55e',
@@ -51,11 +50,28 @@ const NetworkVisualization = () => {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
+    // Reset nodes when agents change
+    state.nodes = [];
+    state.connections = [];
+    state.packets = [];
+
+    // Use real agents if available, otherwise skip
+    if (realAgents !== null && realAgents.length === 0) {
+      // No agents — don't draw anything
+      ctx.clearRect(0, 0, w, h);
+      return () => { window.removeEventListener('resize', resizeCanvas); };
+    }
+
+    const agentNames = realAgents && realAgents.length > 0
+      ? realAgents.map(a => a.name)
+      : ['Agent 1', 'Agent 2', 'Agent 3'];
+    const nodeCount = agentNames.length;
+
     // Create nodes in a nice spread
     const statuses = ['online', 'busy', 'processing'];
     if (state.nodes.length === 0) {
-      for (let i = 0; i < 12; i++) {
-        const angle = (i / 12) * Math.PI * 2;
+      for (let i = 0; i < nodeCount; i++) {
+        const angle = (i / nodeCount) * Math.PI * 2;
         const spread = 0.55 + Math.random() * 0.35;
         state.nodes.push({
           id: i,
@@ -65,12 +81,12 @@ const NetworkVisualization = () => {
           vy: (Math.random() - 0.5) * 0.3,
           baseRadius: 6 + Math.random() * 4,
           pulsePhase: Math.random() * Math.PI * 2,
-          name: agentNames[i],
-          type: agentTypes[i],
+          name: agentNames[i] || `Agent ${i}`,
+          type: realAgents?.[i]?.description?.slice(0, 20) || 'Agent',
           status: statuses[Math.floor(Math.random() * statuses.length)],
-          rating: (4 + Math.random()).toFixed(1),
-          txCount: Math.floor(Math.random() * 200) + 10,
-          earnings: (Math.random() * 500 + 10).toFixed(0),
+          rating: realAgents?.[i]?.avg_rating?.toFixed(1) || '0.0',
+          txCount: realAgents?.[i]?.total_ratings || 0,
+          earnings: ((realAgents?.[i]?.total_volume || 0) / 1000000).toFixed(0),
         });
       }
 
@@ -546,11 +562,20 @@ const NetworkVisualization = () => {
       canvas.removeEventListener('touchend', onMouseUp);
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, []);
+  }, [realAgents]);
 
   return (
     <div className="relative w-full h-80 rounded-xl overflow-hidden bg-primary/50">
-      <canvas ref={canvasRef} className="w-full h-full" style={{ width: '100%', height: '100%' }} />
+      {realAgents !== null && realAgents.length === 0 ? (
+        <div className="flex items-center justify-center h-full text-text-tertiary">
+          <div className="text-center">
+            <div className="text-3xl mb-3 opacity-30">🌐</div>
+            <p className="text-sm">Agent network visualization</p>
+            <p className="text-xs mt-1 opacity-60">Nodes appear as agents register</p>
+          </div>
+        </div>
+      ) : null}
+      <canvas ref={canvasRef} className="w-full h-full" style={{ width: '100%', height: '100%', display: realAgents?.length === 0 ? 'none' : 'block' }} />
 
       {/* Hover tooltip */}
       {tooltip && !selected && (

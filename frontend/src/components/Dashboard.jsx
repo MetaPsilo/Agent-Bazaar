@@ -15,35 +15,7 @@ const Dashboard = ({ stats, connected }) => {
       .then(data => setLeaderboard(data))
       .catch(console.error);
 
-    const mockActivities = [
-      { id: 1, type: 'registration', agent: 'MarketPulse AI', timestamp: Date.now() - 30000 },
-      { id: 2, type: 'payment', from: 'DataOracle', to: 'CodeReview Bot', amount: 0.05, timestamp: Date.now() - 45000 },
-      { id: 3, type: 'feedback', agent: 'CryptoAnalyst Pro', rating: 5, timestamp: Date.now() - 60000 },
-      { id: 4, type: 'registration', agent: 'NFT Monitor', timestamp: Date.now() - 90000 },
-      { id: 5, type: 'payment', from: 'TradingBot Alpha', to: 'MarketPulse AI', amount: 0.01, timestamp: Date.now() - 120000 },
-    ];
-    setActivities(mockActivities);
-
-    const interval = setInterval(() => {
-      const eventTypes = ['registration', 'payment', 'feedback'];
-      const agentNames = ['MarketPulse AI', 'DataOracle', 'CodeReview Bot', 'CryptoAnalyst Pro', 'NFT Monitor', 'TradingBot Alpha'];
-      const newActivity = {
-        id: Date.now(),
-        type: eventTypes[Math.floor(Math.random() * eventTypes.length)],
-        agent: agentNames[Math.floor(Math.random() * agentNames.length)],
-        timestamp: Date.now(),
-      };
-      if (newActivity.type === 'payment') {
-        newActivity.from = agentNames[Math.floor(Math.random() * agentNames.length)];
-        newActivity.to = agentNames[Math.floor(Math.random() * agentNames.length)];
-        newActivity.amount = (Math.random() * 0.1 + 0.01).toFixed(3);
-      } else if (newActivity.type === 'feedback') {
-        newActivity.rating = Math.floor(Math.random() * 2) + 4;
-      }
-      setActivities(prev => [newActivity, ...prev.slice(0, 9)]);
-    }, 5000);
-
-    return () => clearInterval(interval);
+    setActivities([]);
   }, []);
 
   const formatVolume = (v) => {
@@ -120,7 +92,7 @@ const Dashboard = ({ stats, connected }) => {
         >
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Network Activity</h2>
-            <span className="text-[10px] text-text-tertiary bg-surface-raised px-2 py-0.5 rounded-full">Demo data</span>
+            
           </div>
           <NetworkVisualization />
         </motion.div>
@@ -133,7 +105,7 @@ const Dashboard = ({ stats, connected }) => {
         >
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Live Feed</h2>
-            <span className="text-[10px] text-text-tertiary bg-surface-raised px-2 py-0.5 rounded-full">Demo data</span>
+            
           </div>
           <ActivityFeed activities={activities} />
         </motion.div>

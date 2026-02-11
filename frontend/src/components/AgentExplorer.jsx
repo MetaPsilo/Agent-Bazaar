@@ -19,18 +19,17 @@ const AgentExplorer = ({ onNavigate }) => {
     { id: 'monitoring', name: 'Monitoring' },
   ];
 
-  const mockAgents = [
-    { agent_id: 0, name: 'MarketPulse AI', description: 'Real-time Solana ecosystem monitoring with sentiment analysis across 500+ Twitter accounts.', avg_rating: 4.8, total_ratings: 127, total_volume: 2450000, category: 'research', status: 'online', services: ['Market Analysis', 'Alpha Signals', 'Sentiment Tracking'], earnings: 1250.50 },
-    { agent_id: 1, name: 'CodeReview Bot', description: 'Automated code auditing and security analysis for Solana programs with vulnerability detection.', avg_rating: 4.9, total_ratings: 89, total_volume: 1890000, category: 'development', status: 'online', services: ['Code Audit', 'Security Review', 'Gas Optimization'], earnings: 945.20 },
-    { agent_id: 2, name: 'DataOracle Pro', description: 'Cross-chain data aggregation and analytics with real-time price feeds and DeFi metrics.', avg_rating: 4.7, total_ratings: 203, total_volume: 3200000, category: 'research', status: 'online', services: ['Price Feeds', 'DeFi Analytics', 'Cross-chain Data'], earnings: 1650.80 },
-    { agent_id: 3, name: 'TradingBot Alpha', description: 'Algorithmic trading strategies for Solana DeFi with MEV protection and arbitrage detection.', avg_rating: 4.6, total_ratings: 156, total_volume: 5670000, category: 'trading', status: 'busy', services: ['Arbitrage Detection', 'Portfolio Management', 'MEV Protection'], earnings: 2835.40 },
-    { agent_id: 4, name: 'NFT Monitor', description: 'Solana NFT collection tracking with rarity analysis and floor price monitoring.', avg_rating: 4.4, total_ratings: 78, total_volume: 890000, category: 'monitoring', status: 'online', services: ['Rarity Analysis', 'Floor Tracking', 'Mint Alerts'], earnings: 445.60 },
-    { agent_id: 5, name: 'CryptoAnalyst Pro', description: 'Deep fundamental analysis of Solana ecosystem projects with token metrics and research.', avg_rating: 4.5, total_ratings: 92, total_volume: 1340000, category: 'research', status: 'online', services: ['Fundamental Analysis', 'Token Research', 'Investment Reports'], earnings: 670.30 },
-  ];
-
   useEffect(() => {
     setLoading(true);
-    setTimeout(() => { setAgents(mockAgents); setFilteredAgents(mockAgents); setLoading(false); }, 600);
+    fetch('/agents')
+      .then(res => res.json())
+      .then(data => {
+        const list = Array.isArray(data) ? data : (data.agents || []);
+        setAgents(list);
+        setFilteredAgents(list);
+      })
+      .catch(() => { setAgents([]); setFilteredAgents([]); })
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -92,6 +91,13 @@ const AgentExplorer = ({ onNavigate }) => {
             </div>
           ))}
         </div>
+      ) : filteredAgents.length === 0 ? (
+        <div className="text-center py-20">
+          <Users className="w-12 h-12 text-text-tertiary mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No agents registered yet</h3>
+          <p className="text-text-tertiary text-sm max-w-md mx-auto">Be the first to register an AI agent on the permissionless protocol.</p>
+          <button onClick={() => onNavigate('onboarding')} className="mt-6 px-6 py-2.5 bg-accent text-white rounded-xl text-sm font-medium hover:bg-accent/90 transition-colors">Register Agent</button>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <AnimatePresence>
@@ -113,6 +119,7 @@ const AgentExplorer = ({ onNavigate }) => {
                   </div>
                 </div>
                 <p className="text-sm text-text-secondary mb-4 line-clamp-2">{agent.description}</p>
+                {agent.services?.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-4">
                   {agent.services.slice(0, 2).map(s => (
                     <span key={s} className="px-2 py-1 bg-surface-raised text-xs rounded-md text-text-secondary">{s}</span>
@@ -121,6 +128,7 @@ const AgentExplorer = ({ onNavigate }) => {
                     <span className="px-2 py-1 bg-surface-raised text-xs rounded-md text-text-tertiary">+{agent.services.length - 2}</span>
                   )}
                 </div>
+                )}
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-1">
                     <Star className="w-3.5 h-3.5 text-warning fill-warning" />
@@ -174,14 +182,14 @@ const AgentExplorer = ({ onNavigate }) => {
 
               <p className="text-text-secondary leading-relaxed mb-6">{selectedAgent.description}</p>
 
-              <div className="mb-6">
+              {selectedAgent.services?.length > 0 && <div className="mb-6">
                 <h3 className="text-sm font-medium text-text-tertiary mb-3">Services</h3>
                 <div className="flex flex-wrap gap-2">
                   {selectedAgent.services.map(s => (
                     <span key={s} className="px-3 py-1.5 bg-surface-raised rounded-lg text-sm">{s}</span>
                   ))}
                 </div>
-              </div>
+              </div>}
 
               <div className="grid grid-cols-3 gap-4 mb-6">
                 <div className="text-center p-3 bg-surface-raised rounded-xl">
