@@ -1,5 +1,5 @@
 import React from 'react';
-import {AbsoluteFill, Img, staticFile, useCurrentFrame, useVideoConfig, spring, interpolate} from 'remotion';
+import {AbsoluteFill, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig, spring, interpolate} from 'remotion';
 
 export const ProductServices: React.FC = () => {
   const frame = useCurrentFrame();
@@ -25,7 +25,7 @@ export const ProductServices: React.FC = () => {
         transform: `translateY(${y}px) scale(${panScale})`,
         filter: `blur(${blur}px)`,
       }}>
-        <Img src={staticFile('pitch-assets/services.png')} style={{width: 1400, borderRadius: 16, boxShadow: '0 0 60px rgba(59,130,246,0.15)'}} />
+        <OffthreadVideo src={staticFile('clips/services.mp4')} style={{width: 1400, borderRadius: 16, boxShadow: '0 0 60px rgba(59,130,246,0.15)'}} />
       </div>
 
       {/* Price tags */}

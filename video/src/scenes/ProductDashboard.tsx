@@ -1,5 +1,5 @@
 import React from 'react';
-import {AbsoluteFill, Img, staticFile, useCurrentFrame, useVideoConfig, spring, interpolate} from 'remotion';
+import {AbsoluteFill, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig, spring, interpolate} from 'remotion';
 
 export const ProductDashboard: React.FC = () => {
   const frame = useCurrentFrame();
@@ -35,7 +35,7 @@ export const ProductDashboard: React.FC = () => {
         overflow: 'hidden',
         boxShadow: '0 0 80px rgba(59,130,246,0.2)',
       }}>
-        <Img src={staticFile('pitch-assets/dashboard.png')} style={{width: 1400}} />
+        <OffthreadVideo src={staticFile('clips/dashboard.mp4')} style={{width: 1400}} />
       </div>
 
       {/* NETWORK LIVE */}

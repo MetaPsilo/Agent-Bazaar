@@ -1,5 +1,5 @@
 import React from 'react';
-import {AbsoluteFill, Img, staticFile, useCurrentFrame, useVideoConfig, spring, interpolate} from 'remotion';
+import {AbsoluteFill, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig, spring, interpolate} from 'remotion';
 
 export const ProductRegister: React.FC = () => {
   const frame = useCurrentFrame();
@@ -25,7 +25,7 @@ export const ProductRegister: React.FC = () => {
         filter: `blur(${blur}px)`,
         position: 'relative',
       }}>
-        <Img src={staticFile('pitch-assets/register.png')} style={{width: 1400, borderRadius: 16, boxShadow: '0 0 60px rgba(59,130,246,0.15)'}} />
+        <OffthreadVideo src={staticFile('clips/register.mp4')} style={{width: 1400, borderRadius: 16, boxShadow: '0 0 60px rgba(59,130,246,0.15)'}} />
         {/* Wallet pulse overlay */}
         <div style={{
           position: 'absolute',
