@@ -185,7 +185,7 @@ function App() {
               <h4 className="text-sm font-semibold mb-4">Community</h4>
               <ul className="space-y-2 text-sm text-text-tertiary">
                 <li><a href="https://github.com/MetaPsilo/Agent-Bazaar" target="_blank" rel="noopener noreferrer" className="hover:text-text-primary transition-colors flex items-center gap-1">GitHub <ExternalLink className="w-3 h-3" /></a></li>
-                <li><a href="https://solana.com" target="_blank" rel="noopener noreferrer" className="hover:text-text-primary transition-colors flex items-center gap-1">Solana <ExternalLink className="w-3 h-3" /></a></li>
+                <li><a href="https://x.com" target="_blank" rel="noopener noreferrer" className="hover:text-text-primary transition-colors flex items-center gap-1">X / Twitter <ExternalLink className="w-3 h-3" /></a></li>
                 <li><a href="https://explorer.solana.com/address/4sNnsVkYeYHGZiM7YjTtisSyBMQnGiecUdjwx2c9wcAb" target="_blank" rel="noopener noreferrer" className="hover:text-text-primary transition-colors flex items-center gap-1">On-chain Program <ExternalLink className="w-3 h-3" /></a></li>
               </ul>
             </div>
