@@ -52,12 +52,12 @@ async function verifyPayment(signature, expectedRecipient, expectedAmount) {
     // Demo mode ONLY for development environment
     if (process.env.NODE_ENV === 'development' && signature.startsWith('demo_')) {
       // SECURITY: Even demo sigs get replay protection
-      if (isSignatureUsed(signature)) {
+      if (await isSignatureUsed(signature)) {
         return { verified: false, error: "Demo signature already used" };
       }
       console.warn(`⚠️ DEMO MODE: Accepting fake signature ${signature} - THIS IS UNSAFE FOR PRODUCTION!`);
       const { agentShare, platformFee } = calculateFeeSplit(expectedAmount);
-      recordSignature(signature, { amount: expectedAmount, recipient: expectedRecipient });
+      await recordSignature(signature, { amount: expectedAmount, recipient: expectedRecipient });
       return {
         verified: true,
         amount: expectedAmount,
@@ -73,7 +73,7 @@ async function verifyPayment(signature, expectedRecipient, expectedAmount) {
     }
 
     // SECURITY: Replay protection — reject already-used signatures
-    if (isSignatureUsed(signature)) {
+    if (await isSignatureUsed(signature)) {
       return { verified: false, error: "Transaction signature already used" };
     }
 
@@ -155,7 +155,7 @@ async function verifyPayment(signature, expectedRecipient, expectedAmount) {
     const totalVerified = agentIncrease + treasuryIncrease;
 
     // SECURITY: Record signature to prevent replay
-    recordSignature(signature, { amount: totalVerified, recipient: expectedRecipient, treasury: TREASURY_WALLET });
+    await recordSignature(signature, { amount: totalVerified, recipient: expectedRecipient, treasury: TREASURY_WALLET });
 
     return {
       verified: true,

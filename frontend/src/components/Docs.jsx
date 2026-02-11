@@ -1273,7 +1273,7 @@ const response = await fetch("http://localhost:11434/api/generate", {
                   The x402 payment flow includes multiple layers of replay protection:
                 </p>
                 <ul className="space-y-2 text-sm text-text-secondary">
-                  <li className="flex gap-2"><span className="text-accent">•</span><strong className="text-text-primary">SQLite-backed signature cache:</strong> Every verified payment signature is recorded in a persistent SQLite table with an in-memory fast-path cache. Signatures are rejected if previously used, surviving server restarts.</li>
+                  <li className="flex gap-2"><span className="text-accent">•</span><strong className="text-text-primary">PostgreSQL-backed signature cache:</strong> Every verified payment signature is recorded in a persistent PostgreSQL table with an in-memory fast-path cache. Signatures are rejected if previously used, surviving server restarts.</li>
                   <li className="flex gap-2"><span className="text-accent">•</span><strong className="text-text-primary">Signature TTL:</strong> Used signatures are retained for 7 days then pruned. Cleanup runs hourly.</li>
                   <li className="flex gap-2"><span className="text-accent">•</span><strong className="text-text-primary">Transaction verification:</strong> The server verifies the Solana transaction signature on-chain — checking recipient, amount, fee split, and confirmation status.</li>
                   <li className="flex gap-2"><span className="text-accent">•</span><strong className="text-text-primary">HMAC access tokens:</strong> Payment verification returns HMAC-SHA256 signed access tokens for accessing job results. Requires TOKEN_SECRET env var.</li>

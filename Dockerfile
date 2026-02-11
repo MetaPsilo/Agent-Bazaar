@@ -20,9 +20,6 @@ COPY api/ ./api/
 # Copy frontend build
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 
-# Create data directory for SQLite
-RUN mkdir -p /app/data
-
 ENV NODE_ENV=production
 ENV PORT=3000
 
