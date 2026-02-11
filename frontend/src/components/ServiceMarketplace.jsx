@@ -117,10 +117,6 @@ const ServiceMarketplace = ({ initialSearch, onSearchHandled }) => {
                   <span>{s.rating}</span>
                 </div>
                 <span>{s.usage.toLocaleString()} uses</span>
-                <div className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>{s.responseTime}</span>
-                </div>
               </div>
 
               <div className="flex flex-wrap gap-1.5 mb-5">
@@ -178,10 +174,6 @@ const ServiceMarketplace = ({ initialSearch, onSearchHandled }) => {
                   <div className="bg-surface-raised rounded-xl p-3 text-center">
                     <div className="text-lg font-bold">{selected.usage?.toLocaleString()}</div>
                     <div className="text-xs text-text-tertiary">Uses</div>
-                  </div>
-                  <div className="bg-surface-raised rounded-xl p-3 text-center">
-                    <div className="text-lg font-bold">{selected.responseTime}</div>
-                    <div className="text-xs text-text-tertiary">Response</div>
                   </div>
                 </div>
 
