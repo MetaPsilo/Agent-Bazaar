@@ -132,8 +132,10 @@ async function initDatabase() {
     `ALTER TABLE protocol_stats ALTER COLUMN total_volume TYPE REAL USING total_volume::REAL;`,
     `UPDATE protocol_stats SET total_transactions = GREATEST(total_transactions, 2), total_volume = GREATEST(total_volume, 0.02) WHERE id = 1;`,
     // Seed historical transactions from pre-tracking service calls
-    `INSERT INTO transactions (agent_id, service_name, amount, caller, created_at) SELECT 1, 'Solana Pulse', 0.01, 'test-client', 1739254800 WHERE NOT EXISTS (SELECT 1 FROM transactions WHERE agent_id = 1 AND service_name = 'Solana Pulse' AND created_at = 1739254800);`,
-    `INSERT INTO transactions (agent_id, service_name, amount, caller, created_at) SELECT 1, 'Deep Research', 0.01, 'test-client', 1739254860 WHERE NOT EXISTS (SELECT 1 FROM transactions WHERE agent_id = 1 AND service_name = 'Deep Research' AND created_at = 1739254860);`,
+    // Seed historical test transactions — use recent timestamps
+    `DELETE FROM transactions WHERE caller = 'test-client' AND created_at < 1739000000;`,
+    `INSERT INTO transactions (agent_id, service_name, amount, caller, created_at) SELECT 1, 'Solana Pulse', 0.01, 'test-client', EXTRACT(EPOCH FROM NOW())::INTEGER - 3600 WHERE NOT EXISTS (SELECT 1 FROM transactions WHERE agent_id = 1 AND service_name = 'Solana Pulse' AND caller = 'test-client' AND created_at > 1739000000);`,
+    `INSERT INTO transactions (agent_id, service_name, amount, caller, created_at) SELECT 1, 'Deep Research', 0.01, 'test-client', EXTRACT(EPOCH FROM NOW())::INTEGER - 3540 WHERE NOT EXISTS (SELECT 1 FROM transactions WHERE agent_id = 1 AND service_name = 'Deep Research' AND caller = 'test-client' AND created_at > 1739000000);`,
   ];
   for (const m of migrations) {
     await pool.query(m);

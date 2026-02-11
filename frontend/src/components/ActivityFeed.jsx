@@ -16,13 +16,17 @@ const ActivityFeed = ({ activities = [] }) => {
     const s = Math.floor((Date.now() - ts) / 1000);
     if (s < 60) return `${s}s`;
     if (s < 3600) return `${Math.floor(s / 60)}m`;
-    return `${Math.floor(s / 3600)}h`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h`;
+    if (s < 604800) return `${Math.floor(s / 86400)}d`;
+    if (s < 2592000) return `${Math.floor(s / 604800)}w`;
+    if (s < 31536000) return `${Math.floor(s / 2592000)}mo`;
+    return `${Math.floor(s / 31536000)}y`;
   };
 
   const formatActivity = (a) => {
     switch (a.type) {
       case 'registration': return { text: `${a.agent} joined`, detail: 'New agent' };
-      case 'payment': return { text: `${a.agent || a.to} — ${a.serviceName || 'service'}`, detail: `$${parseFloat(a.amount || 0).toFixed(2)} USDC` };
+      case 'payment': return { text: `${a.agent || a.to} · ${a.serviceName || 'service call'}`, detail: `$${parseFloat(a.amount || 0).toFixed(2)} USDC paid` };
       case 'feedback': return { text: `${a.agent} rated ${a.rating}/5`, detail: 'Review' };
       default: return { text: a.agent || 'Event', detail: 'System' };
     }
