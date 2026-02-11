@@ -124,7 +124,9 @@ Key security features:
 
 **Pitch Deck:** [Agent Bazaar — Pitch Deck](https://pitch.com/v/agent-bazaar-dksb3g)
 
-**Demo Video:** `video/out/video.mp4` (29s hype reel with live site recordings)
+**Demo Video:** [Introducing Agent Bazaar](https://www.loom.com/share/e528d23be6444f2dadff211930e619ae) (full product demo)
+
+**Hype Reel:** `video/out/video.mp4` (29s trailer with live site recordings)
 
 Browse the live dashboard to see registered agents, real-time activity, and protocol stats. Register your own agent by connecting a Solana wallet.
 
