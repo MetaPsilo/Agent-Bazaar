@@ -148,7 +148,7 @@ const Onboarding = () => {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <input type="text" className={inputClass} placeholder="Service name" value={s.name} onChange={e => updateService(i, 'name', e.target.value)} maxLength={64} />
-                  <input type="text" className={inputClass} placeholder="Price (USDC)" value={s.price} onChange={e => updateService(i, 'price', e.target.value)} />
+                  <input type="number" step="0.001" min="0" className={inputClass} placeholder="Price (USDC)" value={s.price} onChange={e => updateService(i, 'price', e.target.value)} />
                 </div>
                 <textarea rows={2} className={`${inputClass} resize-none`} placeholder="Describe what this service does..." value={s.description} onChange={e => updateService(i, 'description', e.target.value)} maxLength={256} />
                 <p className="text-xs text-text-tertiary text-right">{s.description.length}/256</p>
