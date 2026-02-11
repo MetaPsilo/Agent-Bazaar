@@ -3,15 +3,20 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ArrowLeft, Check, Copy, Wallet, Code, Rocket, Plus, Trash2, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import bs58 from 'bs58';
 
 const Onboarding = ({ onNavigate }) => {
-  const { publicKey, connected: walletConnected } = useWallet();
+  const { publicKey, signMessage, connected: walletConnected } = useWallet();
   const [step, setStep] = useState(1);
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState(null);
   const [errors, setErrors] = useState({});
-  const [callbackTest, setCallbackTest] = useState(null); // null | 'testing' | 'success' | 'error'
+  const [callbackTest, setCallbackTest] = useState(null);
   const [callbackVerified, setCallbackVerified] = useState(false);
+  const [ownerVerified, setOwnerVerified] = useState(false);
+  const [ownerVerifying, setOwnerVerifying] = useState(false);
+  const [ownerVerifyError, setOwnerVerifyError] = useState(null);
+  const [authData, setAuthData] = useState(null); // { message, signature } for deploy
   const [form, setForm] = useState({
     name: '', description: '',
     services: [{ name: '', description: '', price: '' }],
@@ -25,6 +30,28 @@ const Onboarding = ({ onNavigate }) => {
       update('walletAddress', publicKey.toBase58());
     }
   }, [walletConnected, publicKey]);
+
+  const verifyWalletOwnership = async () => {
+    if (!publicKey || !signMessage) return;
+    setOwnerVerifying(true);
+    setOwnerVerifyError(null);
+    try {
+      const timestamp = Math.floor(Date.now() / 1000);
+      const message = `register-agent:${publicKey.toBase58()}:${timestamp}`;
+      const messageBytes = new TextEncoder().encode(message);
+      const signature = await signMessage(messageBytes);
+      setAuthData({ message, signature: bs58.encode(signature) });
+      setOwnerVerified(true);
+    } catch (e) {
+      if (e.message?.includes('User rejected')) {
+        setOwnerVerifyError('Signature rejected — you must sign to prove wallet ownership.');
+      } else {
+        setOwnerVerifyError(e.message || 'Verification failed');
+      }
+    } finally {
+      setOwnerVerifying(false);
+    }
+  };
 
   const steps = [
     { n: 1, title: 'Agent Details', icon: Code },
@@ -56,8 +83,8 @@ const Onboarding = ({ onNavigate }) => {
       if (!form.description.trim()) e.description = 'Description is required';
     }
     if (s === 3) {
-      if (!form.walletAddress.trim()) e.walletAddress = 'Wallet address is required';
-      else if (!isValidSolanaAddress(form.walletAddress.trim())) e.walletAddress = 'Invalid Solana address';
+      if (!walletConnected || !publicKey) e.walletAddress = 'Connect your wallet first';
+      else if (!ownerVerified) e.walletAddress = 'You must verify wallet ownership before proceeding';
       if (!form.callbackUrl.trim()) e.callbackUrl = 'Callback URL is required';
       else { try { new URL(form.callbackUrl); } catch { e.callbackUrl = 'Invalid URL format'; } }
       if (!callbackVerified) e.callbackUrl = e.callbackUrl || 'You must test your callback URL before proceeding';
@@ -84,7 +111,9 @@ const Onboarding = ({ onNavigate }) => {
           agentWallet: form.walletAddress.trim(),
           services: form.services.filter(s => s.name.trim()),
           callbackUrl: form.callbackUrl.trim() || undefined,
-          agentUri: `https://agentbazaar.org/agents/${form.name.toLowerCase().replace(/\s+/g, '-')}`
+          agentUri: `https://agentbazaar.org/agents/${form.name.toLowerCase().replace(/\s+/g, '-')}`,
+          authMessage: authData?.message,
+          authSignature: authData?.signature,
         }),
       });
       const data = await res.json();
@@ -176,8 +205,8 @@ const Onboarding = ({ onNavigate }) => {
               <p className="text-text-secondary text-sm">This wallet will own the agent and receive payments.</p>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Connect Wallet</label>
-              <div className="flex items-center gap-4">
+              <label className="block text-sm font-medium mb-2">Connect & Verify Wallet</label>
+              <div className="flex items-center gap-3 flex-wrap">
                 <WalletMultiButton style={{
                   backgroundColor: 'var(--color-accent, #3b82f6)',
                   borderRadius: '0.75rem',
@@ -185,17 +214,27 @@ const Onboarding = ({ onNavigate }) => {
                   fontSize: '14px',
                   fontFamily: 'inherit',
                 }} />
-                {walletConnected && publicKey && (
+                {walletConnected && publicKey && !ownerVerified && (
+                  <button
+                    onClick={verifyWalletOwnership}
+                    disabled={ownerVerifying}
+                    className="px-4 py-2.5 rounded-xl text-sm font-medium bg-warning/10 border border-warning/30 text-warning hover:bg-warning/20 transition-colors flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {ownerVerifying ? <><Loader2 className="w-4 h-4 animate-spin" /> Signing...</> : '🔐 Verify Ownership'}
+                  </button>
+                )}
+                {ownerVerified && (
                   <span className="text-xs px-3 py-1.5 rounded-full font-medium bg-success/10 text-success border border-success/20">
-                    ✓ Connected
+                    ✓ Ownership proven
                   </span>
                 )}
               </div>
               {walletConnected && publicKey && (
                 <p className="text-xs text-text-tertiary mt-2 font-mono">{publicKey.toBase58()}</p>
               )}
+              {ownerVerifyError && <p className="text-xs text-danger mt-1.5">{ownerVerifyError}</p>}
               {errors.walletAddress && <p className="text-xs text-danger mt-1.5">{errors.walletAddress}</p>}
-              <p className="text-xs text-text-tertiary mt-2">Connect your Solana wallet (Phantom, Solflare, etc.). This wallet will own the agent and receive payments.</p>
+              <p className="text-xs text-text-tertiary mt-2">Connect your Solana wallet and sign a message to prove ownership. This wallet will own the agent and receive payments.</p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-2">Callback URL</label>
