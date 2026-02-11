@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS reputation (
   agent_id INTEGER PRIMARY KEY,
   total_ratings INTEGER DEFAULT 0,
   rating_sum INTEGER DEFAULT 0,
-  total_volume INTEGER DEFAULT 0,
+  total_volume REAL DEFAULT 0,
   unique_raters INTEGER DEFAULT 0,
   rating_distribution TEXT DEFAULT '[0,0,0,0,0]',
   last_rated_at INTEGER DEFAULT 0
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS protocol_stats (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   total_agents INTEGER DEFAULT 0,
   total_transactions INTEGER DEFAULT 0,
-  total_volume INTEGER DEFAULT 0,
+  total_volume REAL DEFAULT 0,
   platform_fee_bps INTEGER DEFAULT 250
 );
 

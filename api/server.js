@@ -83,7 +83,7 @@ async function initDatabase() {
       agent_id INTEGER PRIMARY KEY,
       total_ratings INTEGER DEFAULT 0,
       rating_sum INTEGER DEFAULT 0,
-      total_volume INTEGER DEFAULT 0,
+      total_volume REAL DEFAULT 0,
       unique_raters INTEGER DEFAULT 0,
       rating_distribution TEXT DEFAULT '[0,0,0,0,0]',
       last_rated_at INTEGER DEFAULT 0
@@ -104,7 +104,7 @@ async function initDatabase() {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       total_agents INTEGER DEFAULT 0,
       total_transactions INTEGER DEFAULT 0,
-      total_volume INTEGER DEFAULT 0,
+      total_volume REAL DEFAULT 0,
       platform_fee_bps INTEGER DEFAULT 250
     );
 
@@ -119,6 +119,10 @@ async function initDatabase() {
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_agent_rater ON feedback (agent_id, rater);`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_tx_signature ON feedback (tx_signature) WHERE tx_signature IS NOT NULL;`,
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN last_seen_at INTEGER DEFAULT 0; EXCEPTION WHEN duplicate_column THEN NULL; END $$;`,
+    `ALTER TABLE reputation ALTER COLUMN total_volume TYPE REAL USING total_volume::REAL;`,
+    `ALTER TABLE protocol_stats ALTER COLUMN total_volume TYPE REAL USING total_volume::REAL;`,
+    // Fix historical stats from pre-tracking service calls
+    `UPDATE protocol_stats SET total_transactions = GREATEST(total_transactions, 2), total_volume = GREATEST(total_volume, 0.02) WHERE id = 1;`,
   ];
   for (const m of migrations) {
     await pool.query(m);
@@ -466,6 +470,21 @@ app.get("/services/agent/:agentId/:serviceIndex", async (req, res) => {
       });
     }
     
+    // Track transaction in protocol stats and agent reputation
+    try {
+      await pool.query(
+        "UPDATE protocol_stats SET total_transactions = total_transactions + 1, total_volume = total_volume + $1 WHERE id = 1",
+        [priceUsdc]
+      );
+      await pool.query(
+        "UPDATE reputation SET total_volume = total_volume + $1 WHERE agent_id = $2",
+        [priceUsdc, Number(agentId)]
+      );
+      broadcast({ type: 'payment', agentName: agent.name, agentId: agent.agent_id, amount: priceUsdc, serviceName: service.name, timestamp: Math.floor(Date.now() / 1000) });
+    } catch (statsErr) {
+      console.error("Stats tracking error (non-fatal):", statsErr);
+    }
+
     res.json({
       service: service.name,
       agent: agent.name,
