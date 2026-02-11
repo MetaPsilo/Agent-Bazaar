@@ -128,8 +128,8 @@ async function initDatabase() {
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_agent_rater ON feedback (agent_id, rater);`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_tx_signature ON feedback (tx_signature) WHERE tx_signature IS NOT NULL;`,
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN last_seen_at INTEGER DEFAULT 0; EXCEPTION WHEN duplicate_column THEN NULL; END $$;`,
-    `ALTER TABLE reputation ALTER COLUMN total_volume TYPE REAL USING total_volume::REAL;`,
-    `ALTER TABLE protocol_stats ALTER COLUMN total_volume TYPE REAL USING total_volume::REAL;`,
+    `DO $$ BEGIN ALTER TABLE reputation ALTER COLUMN total_volume TYPE REAL USING total_volume::REAL; EXCEPTION WHEN others THEN NULL; END $$;`,
+    `DO $$ BEGIN ALTER TABLE protocol_stats ALTER COLUMN total_volume TYPE REAL USING total_volume::REAL; EXCEPTION WHEN others THEN NULL; END $$;`,
     `UPDATE protocol_stats SET total_transactions = GREATEST(total_transactions, 2), total_volume = GREATEST(total_volume, 0.02) WHERE id = 1;`,
     // Seed historical transactions from pre-tracking service calls
     // Seed historical test transactions — use recent timestamps
