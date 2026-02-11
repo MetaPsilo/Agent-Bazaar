@@ -108,6 +108,15 @@ async function initDatabase() {
       platform_fee_bps INTEGER DEFAULT 250
     );
 
+    CREATE TABLE IF NOT EXISTS transactions (
+      id SERIAL PRIMARY KEY,
+      agent_id INTEGER NOT NULL,
+      service_name TEXT,
+      amount REAL DEFAULT 0,
+      caller TEXT,
+      created_at INTEGER
+    );
+
     INSERT INTO protocol_stats (id) VALUES (1) ON CONFLICT DO NOTHING;
   `);
 
@@ -121,8 +130,10 @@ async function initDatabase() {
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN last_seen_at INTEGER DEFAULT 0; EXCEPTION WHEN duplicate_column THEN NULL; END $$;`,
     `ALTER TABLE reputation ALTER COLUMN total_volume TYPE REAL USING total_volume::REAL;`,
     `ALTER TABLE protocol_stats ALTER COLUMN total_volume TYPE REAL USING total_volume::REAL;`,
-    // Fix historical stats from pre-tracking service calls
     `UPDATE protocol_stats SET total_transactions = GREATEST(total_transactions, 2), total_volume = GREATEST(total_volume, 0.02) WHERE id = 1;`,
+    // Seed historical transactions from pre-tracking service calls
+    `INSERT INTO transactions (agent_id, service_name, amount, caller, created_at) SELECT 1, 'Solana Pulse', 0.01, 'test-client', 1739254800 WHERE NOT EXISTS (SELECT 1 FROM transactions WHERE agent_id = 1 AND service_name = 'Solana Pulse' AND created_at = 1739254800);`,
+    `INSERT INTO transactions (agent_id, service_name, amount, caller, created_at) SELECT 1, 'Deep Research', 0.01, 'test-client', 1739254860 WHERE NOT EXISTS (SELECT 1 FROM transactions WHERE agent_id = 1 AND service_name = 'Deep Research' AND created_at = 1739254860);`,
   ];
   for (const m of migrations) {
     await pool.query(m);
@@ -470,8 +481,9 @@ app.get("/services/agent/:agentId/:serviceIndex", async (req, res) => {
       });
     }
     
-    // Track transaction in protocol stats and agent reputation
+    // Track transaction in protocol stats, reputation, and transactions table
     try {
+      const now = Math.floor(Date.now() / 1000);
       await pool.query(
         "UPDATE protocol_stats SET total_transactions = total_transactions + 1, total_volume = total_volume + $1 WHERE id = 1",
         [priceUsdc]
@@ -479,6 +491,10 @@ app.get("/services/agent/:agentId/:serviceIndex", async (req, res) => {
       await pool.query(
         "UPDATE reputation SET total_volume = total_volume + $1 WHERE agent_id = $2",
         [priceUsdc, Number(agentId)]
+      );
+      await pool.query(
+        "INSERT INTO transactions (agent_id, service_name, amount, caller, created_at) VALUES ($1, $2, $3, $4, $5)",
+        [Number(agentId), service.name, priceUsdc, 'x402-client', now]
       );
       broadcast({ type: 'payment', agentName: agent.name, agentId: agent.agent_id, amount: priceUsdc, serviceName: service.name, timestamp: Math.floor(Date.now() / 1000) });
     } catch (statsErr) {
@@ -952,6 +968,16 @@ app.get("/activity", async (req, res) => {
     );
     regs.forEach(r => activities.push({
       type: 'registration', agent: r.name, agentId: r.agent_id, timestamp: r.registered_at
+    }));
+
+    // Recent transactions
+    const { rows: txs } = await pool.query(
+      `SELECT t.agent_id, t.service_name, t.amount, t.caller, t.created_at, a.name FROM transactions t
+       JOIN agents a ON a.agent_id = t.agent_id ORDER BY t.created_at DESC LIMIT $1`, [limit]
+    );
+    txs.forEach(t => activities.push({
+      type: 'payment', agent: t.name, agentId: t.agent_id, amount: t.amount,
+      from: t.caller?.slice(0, 8) + '...', to: t.name, serviceName: t.service_name, timestamp: t.created_at
     }));
 
     // Recent feedback

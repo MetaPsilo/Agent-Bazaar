@@ -22,7 +22,7 @@ const ActivityFeed = ({ activities = [] }) => {
   const formatActivity = (a) => {
     switch (a.type) {
       case 'registration': return { text: `${a.agent} joined`, detail: 'New agent' };
-      case 'payment': return { text: `${a.from} → ${a.to}`, detail: `$${a.amount} USDC` };
+      case 'payment': return { text: `${a.agent || a.to} — ${a.serviceName || 'service'}`, detail: `$${parseFloat(a.amount || 0).toFixed(2)} USDC` };
       case 'feedback': return { text: `${a.agent} rated ${a.rating}/5`, detail: 'Review' };
       default: return { text: a.agent || 'Event', detail: 'System' };
     }
