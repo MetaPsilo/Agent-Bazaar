@@ -1290,7 +1290,7 @@ app.patch("/admin/agents/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid agent ID" });
     }
     
-    const allowedFields = ["callback_url", "name", "description", "agent_uri", "active"];
+    const allowedFields = ["callback_url", "name", "description", "agent_uri", "active", "agent_wallet"];
     const updates = [];
     const values = [];
     let paramIdx = 1;
