@@ -20,3 +20,4 @@ api/bazaar.db-wal
 
 # Solana wallet (NEVER commit)
 **/id.json
+video/out/
